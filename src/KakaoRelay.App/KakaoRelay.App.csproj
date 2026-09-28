@@ -8,7 +8,8 @@
     <ApplicationIcon>Assets/KakaoRelay.ico</ApplicationIcon>
     <AssemblyName>KakaoRelay</AssemblyName>
     <Product>KakaoRelay</Product>
-    <Version>0.5.2</Version>
+    <Version>0.7.4</Version>
+    <SatelliteResourceLanguages>ko</SatelliteResourceLanguages>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../KakaoRelay.Core/KakaoRelay.Core.csproj" /></ItemGroup>

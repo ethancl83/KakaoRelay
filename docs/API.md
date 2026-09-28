@@ -1,4 +1,45 @@
-# KakaoRelay Gateway API · v1 (앱 v0.5.2)
+# KakaoRelay Gateway API · v1 (앱 v0.7.4)
+
+## 이미지 전송 · POST /v1/send-image
+
+PC의 이미지 파일을 카카오톡 대화방에 첨부합니다. Computer Use, 화면 좌표, 클립보드 없이 `WM_DROPFILES`와 전송 창 HWND로 처리합니다.
+
+```json
+{
+  "requestId": "image-20260929-001",
+  "recipient": "대화방 이름",
+  "imagePath": "C:\\Images\\happy.png"
+}
+```
+
+또는 앱에 등록한 페르소나 이미지 식별자를 사용합니다. `imagePath`와 `attachment` 중 하나만 지정하세요.
+
+```json
+{
+  "requestId": "persona-20260929-001",
+  "recipient": "대화방 이름",
+  "attachment": {
+    "personaId": "default",
+    "provider": "astra",
+    "imageId": "0123456789abcdef0123456789abcdef"
+  }
+}
+```
+
+이미지 ID 조회: `GET /v1/personas/{personaId}/images`. 응답의 `appliedProvider`, `versions.<provider>.active`와 `referenceId`를 사용합니다. 예제 ID는 실제 ID로 바꾸세요.
+생성·재생성·채택은 앱의 **AI 챗봇 → 페르소나 → 이미지**에서만 합니다. Astra와 Grok 이미지는 페르소나별로 분리됩니다.
+
+```powershell
+.\scripts\Relay.ps1 -Action send-image -RequestId 'image-20260929-001' -Recipient '대화방 이름' -ImagePath 'C:\Images\happy.png'
+.\scripts\Relay.ps1 -Action send-image -RequestId 'persona-20260929-001' -Recipient '대화방 이름' -PersonaId 'default' -ImageProvider 'astra' -ImageId '실제이미지ID'
+```
+
+- 기존 API와 같은 Bearer 인증 및 요청 ID 중복 방지 규칙을 사용합니다. 텍스트와 이미지는 서로 다른 요청 ID로 보냅니다.
+- PNG/JPEG/GIF/BMP/WebP 로컬 파일의 절대 경로를 받습니다. URL/네트워크 경로는 받지 않습니다. 확장자와 파일 헤더를 확인하며 실제 처리 가능 여부는 카카오톡에 따릅니다. PNG 실제 발송 검증 완료.
+- 응답은 기존 발송 기록 형식에 `kind: "image"`, `attachmentQueued`를 추가합니다. `enterPosted`는 전송 요청, `inputCleared`는 첨부 창 닫힘이며 상대방 수신·읽음 확인이 아닙니다.
+- 결과가 불명확하면 `needs-review`로 남깁니다. 같은 요청 ID는 다시 첨부하지 않으며, 새 ID로 자동 재전송하지 마세요.
+- 전송용 사본은 내 문서의 `KakaoRelay/attachments`에 보관합니다. 전송 중이거나 결과가 불명확할 때 삭제하지 마세요. 생성 원본과 키·발송 기록은 Git에 포함하지 않습니다.
+- 하위 호환을 위해 `POST /v1/send`도 빈 `message`와 `imagePath` 또는 `attachment`를 지원합니다.
 
 앱의 ‘연결 · API’ 탭에서 이 사용법과 OpenAPI JSON 명세를 확인하고 각각 전체 복사할 수 있습니다.
 
@@ -116,11 +157,24 @@ HTTP 200은 **처리 결과가 반환되었다는 뜻**입니다. 반드시 `sta
 
 ## 최근 메시지
 
-현재 API는 최근 대화 조회를 제공하지 않습니다. `capabilities.recentMessages.supported=false`로 명확히 반환합니다.
-2026-09-28 PC의 `chat_data/chatLogs_*.edb`, `chatListInfo.edb` 및 WAL 파일을 확인했습니다.
-표본 파일은 평문 SQLite 헤더가 없었습니다. 암호화 형식과 키 처리, DB/WAL 일관성을 검증한 로컬 읽기 어댑터가 필요합니다.
-최근 대화 수집은 이 로컬 데이터 경로를 기준으로 설계합니다. 현재 자동 수집·주기 감시는 구현하지 않았습니다.
-입력창 내용을 수신 메시지로 취급하지 않습니다. 상세: [로컬 데이터 조사](LOCAL-DATA.md).
+v0.6 Windows 앱은 `capabilities.recentMessages.supported=true`를 반환합니다. 실행 중인 카카오톡에서 검증된 키로 DB/WAL을 읽으며 키를 확인하지 못한 방은 카카오톡에서 연 뒤 새로고침해야 합니다.
+
+| 요청 | 동작 |
+| --- | --- |
+| GET /v1/local/rooms | 키를 다시 확인하고 로컬 방 목록 반환. `profile`, `id`, `title`, `readable` 사용 |
+| GET /v1/local/messages?profile=…&roomId=…&limit=100 | 최근 문맥 반환. 먼저 방 목록 조회. limit 1~500 |
+| GET /v1/ai/settings | 페르소나·프로바이더 설정 |
+| PUT /v1/ai/settings | 설정 전체 검증·저장 |
+| GET /v1/ai/providers | 설치된 CLI 경로·상태. 로그인 성공을 뜻하지 않음 |
+| POST /v1/ai/generate | 분석·답변·질문 응답. 카카오톡에 전송하지 않음 |
+
+```json
+{"profile":"방 목록에서 받은 profile","roomId":"방 목록에서 받은 id","mode":"analyze","instruction":"결정된 내용과 할 일을 정리해줘"}
+```
+
+`mode`는 `analyze`, `reply`, `chat`입니다. 결과는 `text`, `provider`, `model`, `effort`, `mode`, `room`, `messageCount`, `attempts`를 포함합니다. `auto` 우선순위는 Codex → Grok → Claude이며 직접 선택은 fallback하지 않습니다. 설정은 [AI 사용법](AI.md)을 참고하세요.
+
+키 없음·DB 변경 중·AI 처리 중은 409, 방 미조회는 404, CLI 모두 실패는 503 `ai_unavailable`입니다. 생성 취소는 HTTP 요청을 중단하면 됩니다. 발송과 생성은 별도 요청이며 생성 결과를 `POST /v1/send`에 전달할 때는 기존 발송 규칙을 따르세요. 자동 답장 시작/중지는 Windows UI에서만 제공합니다.
 
 근거: [UI Automation TextPattern](https://learn.microsoft.com/en-us/dotnet/framework/ui-automation/ui-automation-textpattern-overview),
 [카카오 메시지 API](https://developers.kakao.com/docs/ko/kakaotalk-message/rest-api).

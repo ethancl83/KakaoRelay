@@ -1,72 +1,143 @@
-<Window x:Class="KakaoRelay.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="KakaoRelay" Icon="Assets/KakaoRelay.ico" Width="640" Height="600" MinWidth="480" MinHeight="460" Background="White" Foreground="#172D39" FontFamily="Malgun Gothic, Segoe UI" FontSize="13" UseLayoutRounding="True" TextOptions.TextFormattingMode="Display" WindowStartupLocation="CenterScreen">
-  <Window.Resources><BooleanToVisibilityConverter x:Key="BoolVisibility"/></Window.Resources>
-  <TabControl x:Name="MainTabs" Margin="20,16" BorderThickness="0" Background="White">
-    <TabControl.Resources><Style TargetType="TabItem"><Setter Property="Padding" Value="20,9"/></Style></TabControl.Resources>
-    <TabItem Header="발송">
-      <Grid Margin="0,16,0,0">
-        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*" MinHeight="100"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-        <DockPanel Margin="0,0,0,10"><TextBlock Text="받는 대화방" FontWeight="SemiBold"/><TextBlock Text="{Binding CharacterCount}" Foreground="{StaticResource Muted}" HorizontalAlignment="Right" FontSize="11"/></DockPanel>
-        <Grid Grid.Row="1"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-          <ComboBox x:Name="RoomsList" ItemsSource="{Binding Conversations}" SelectedItem="{Binding SelectedConversation}" IsEnabled="{Binding CanEdit}" Padding="10,8" MinHeight="38" AutomationProperties.Name="받는 대화방" ToolTip="{Binding ConnectionText}">
-            <ComboBox.ItemContainerStyle><Style TargetType="ComboBoxItem"><Setter Property="IsEnabled" Value="{Binding Selectable}"/><Setter Property="Padding" Value="10,7"/></Style></ComboBox.ItemContainerStyle>
-            <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Title}" ToolTip="{Binding Hint}"/></DataTemplate></ComboBox.ItemTemplate>
-          </ComboBox>
-          <Button Grid.Column="1" Content="↻" Click="RefreshRooms_Click" IsEnabled="{Binding CanEdit}" Padding="12,5" Margin="8,0,0,0" FontSize="20" ToolTip="열린 대화방 새로고침" AutomationProperties.Name="대화방 새로고침"/>
-        </Grid>
-        <TextBlock Grid.Row="2" Text="{Binding TargetHint}" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,7,0,12"/>
-        <TextBox x:Name="MessageEditor" Grid.Row="3" Text="{Binding MessageBody, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanEdit}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Padding="12" BorderBrush="#D2DFE2" Background="#FAFCFC" FontSize="15" AutomationProperties.Name="보낼 메시지"/>
-        <DockPanel Grid.Row="4" Margin="0,14,0,0">
-          <Button DockPanel.Dock="Right" Content="보내기" Click="Send_Click" IsEnabled="{Binding CanSend}" Background="#087E83" Foreground="White" BorderThickness="0" MinWidth="88"/>
-          <StackPanel Orientation="Horizontal">
-            <Button Content="대화 확인 완료" Click="ObserveCurrent_Click" IsEnabled="{Binding CanObserveCurrent}" Visibility="{Binding ShowObserveCurrent, Converter={StaticResource BoolVisibility}}" Padding="12,10"/>
-          </StackPanel>
-        </DockPanel>
-        <ProgressBar Grid.Row="5" Height="2" IsIndeterminate="True" Foreground="#087E83" Margin="0,12,0,0" Visibility="{Binding Working, Converter={StaticResource BoolVisibility}}"/>
-        <StackPanel Grid.Row="6" Margin="0,12,0,0" Visibility="{Binding ShowSendResult, Converter={StaticResource BoolVisibility}}"><TextBlock Text="{Binding SendStatus}" FontWeight="SemiBold"/><TextBlock Text="{Binding SendDetail}" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,4,0,0"/></StackPanel>
-      </Grid>
-    </TabItem>
-    <TabItem Header="이력">
-      <Grid Margin="0,16,0,0">
-        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-        <DockPanel Margin="0,0,0,10"><Button DockPanel.Dock="Right" Content="새로고침" Click="RefreshHistory_Click" IsEnabled="{Binding NotWorking}" Padding="10,6"/><TextBlock Text="발송 이력" FontWeight="SemiBold" VerticalAlignment="Center"/></DockPanel>
-        <DataGrid Grid.Row="1" ItemsSource="{Binding History}" SelectedItem="{Binding SelectedReceipt}" FontSize="12"><DataGrid.Columns><DataGridTextColumn Header="시간" Binding="{Binding DisplayTime}" Width="135"/><DataGridTextColumn Header="대화방" Binding="{Binding Recipient}" Width="*"/><DataGridTextColumn Header="상태" Binding="{Binding DisplayStatus}" Width="160"/></DataGrid.Columns></DataGrid>
-        <TextBlock Grid.Row="2" Text="{Binding HistoryHint}" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,12"/>
-        <DockPanel Grid.Row="3"><Button Content="기록 폴더" Click="OpenHistoryFolder_Click" DockPanel.Dock="Left" Padding="10,7"/><Button Content="선택한 발송 대화 확인 완료" Click="ObserveHistory_Click" IsEnabled="{Binding CanObserveHistory}" HorizontalAlignment="Right" Padding="10,7"/></DockPanel>
-      </Grid>
-    </TabItem>
-    <TabItem Header="연결 · API">
-      <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="0,16,0,0">
-          <TextBlock Text="{Binding ApiStatus}" FontWeight="SemiBold"/>
-          <TextBlock Text="AI는 대화방과 본문을 API로 전달합니다. 앱이 켜져 있으면 게이트웨이도 함께 실행됩니다." Foreground="{StaticResource Muted}" FontSize="12" Margin="0,8,0,12"/>
-          <TabControl BorderBrush="#D2DFE2" Background="White">
-            <TabItem Header="사용법 · 예제">
-              <DockPanel Margin="10">
-                <Button DockPanel.Dock="Top" Content="사용법 복사" Tag="usage" Click="CopyApiDocs_Click" HorizontalAlignment="Right" Padding="12,7" Margin="0,0,0,8"/>
-                <TextBox Text="{Binding ApiDocumentation, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Height="270" Padding="10" BorderThickness="0" Background="#FAFCFC" AutomationProperties.Name="API 사용법과 예제"/>
-              </DockPanel>
-            </TabItem>
-            <TabItem Header="OpenAPI · JSON">
-              <DockPanel Margin="10">
-                <Button DockPanel.Dock="Top" Content="OpenAPI 복사" Tag="openapi" Click="CopyApiDocs_Click" HorizontalAlignment="Right" Padding="12,7" Margin="0,0,0,8"/>
-                <TextBox Text="{Binding OpenApiDocument, Mode=OneWay}" IsReadOnly="True" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Height="270" Padding="10" BorderThickness="0" Background="#FAFCFC" FontFamily="Consolas, Malgun Gothic" FontSize="12" AutomationProperties.Name="OpenAPI JSON 명세"/>
-              </DockPanel>
-            </TabItem>
-          </TabControl>
-          <TextBlock Text="{Binding ApiCopyStatus}" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,6,0,0" AutomationProperties.LiveSetting="Polite"/>
-          <Separator Margin="0,20"/>
-          <DockPanel><Button DockPanel.Dock="Right" Content="진단 시작" Click="Diagnose_Click" IsEnabled="{Binding NotWorking}" Padding="12,7"/><TextBlock Text="{Binding DiagnosticTitle}" FontWeight="SemiBold" VerticalAlignment="Center"/></DockPanel>
-          <TextBlock Text="{Binding DiagnosticSummary}" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,8,0,12"/>
-          <Expander x:Name="DiagnosticPanel" Header="진단 세부 정보">
-            <StackPanel>
-              <DataGrid x:Name="WindowsGrid" ItemsSource="{Binding DiagnosticWindows}" SelectionChanged="DiagnosticSelection_Changed" Height="140" FontSize="11" Margin="0,8,0,0"><DataGrid.Columns><DataGridTextColumn Header="창" Binding="{Binding DisplayTitle}" Width="*"/><DataGridTextColumn Header="상태" Binding="{Binding DisplayState}" Width="180"/></DataGrid.Columns></DataGrid>
-              <DataGrid ItemsSource="{Binding DiagnosticControls}" Height="120" FontSize="11" Margin="0,8,0,0"><DataGrid.Columns><DataGridTextColumn Header="컨트롤" Binding="{Binding ClassName}" Width="*"/><DataGridTextColumn Header="기능" Binding="{Binding Patterns}" Width="140"/></DataGrid.Columns></DataGrid>
-              <Button Content="결과 파일" Click="OpenReport_Click" IsEnabled="{Binding HasReport}" Padding="10,6" HorizontalAlignment="Right" Margin="0,10,0,0"/>
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:local="clr-namespace:KakaoRelay.App" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="KakaoRelay.App.MainWindow" Title="KakaoRelay" Icon="Assets/KakaoRelay.ico" Width="490" Height="760" Background="White" Foreground="#172D39" FontFamily="Malgun Gothic, Segoe UI" FontSize="13" UseLayoutRounding="True" TextOptions.TextFormattingMode="Display" WindowStartupLocation="CenterScreen" ResizeMode="CanMinimize">
+  <Window.Resources>
+    <BooleanToVisibilityConverter x:Key="BoolVisibility" />
+  </Window.Resources>
+  <Grid x:Name="MainLayout">
+    <TabControl x:Name="MainTabs" Margin="12,12" BorderThickness="0" Background="White">
+      <TabControl.Resources>
+        <Style TargetType="TabItem">
+          <Setter Property="Padding" Value="20,9" />
+        </Style>
+      </TabControl.Resources>
+      <TabItem Header="AI 챗봇">
+        <local:AiPanel x:Name="ChatbotPanel" />
+      </TabItem>
+      <TabItem Header="메시지">
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="300" />
+            <RowDefinition Height="*" />
+          </Grid.RowDefinitions>
+          <Grid Margin="0,12,0,0" Grid.Row="0">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="*" MinHeight="100" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <DockPanel Margin="0,0,0,10">
+              <TextBlock Text="받는 대화방" FontWeight="SemiBold" />
+              <TextBlock Text="{Binding CharacterCount}" Foreground="{StaticResource Muted}" HorizontalAlignment="Right" FontSize="11" />
+            </DockPanel>
+            <Grid Grid.Row="1">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <ComboBox x:Name="RoomsList" ItemsSource="{Binding Conversations}" SelectedItem="{Binding SelectedConversation}" IsEnabled="{Binding CanEdit}" Padding="10,8" MinHeight="38" AutomationProperties.Name="받는 대화방" ToolTip="{Binding ConnectionText}">
+                <ComboBox.ItemContainerStyle>
+                  <Style TargetType="ComboBoxItem">
+                    <Setter Property="IsEnabled" Value="{Binding Selectable}" />
+                    <Setter Property="Padding" Value="10,7" />
+                  </Style>
+                </ComboBox.ItemContainerStyle>
+                <ComboBox.ItemTemplate>
+                  <DataTemplate>
+                    <TextBlock Text="{Binding Title}" ToolTip="{Binding Hint}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+              <Button Grid.Column="1" Content="↻" Click="RefreshRooms_Click" IsEnabled="{Binding CanEdit}" Padding="12,5" Margin="8,0,0,0" FontSize="20" ToolTip="열린 대화방 새로고침" AutomationProperties.Name="대화방 새로고침" />
+            </Grid>
+            <TextBlock Grid.Row="2" Text="{Binding TargetHint}" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,7,0,12" />
+            <TextBox x:Name="MessageEditor" Grid.Row="3" Text="{Binding MessageBody, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanEdit}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Padding="12" BorderBrush="#D2DFE2" Background="#FAFCFC" FontSize="15" AutomationProperties.Name="보낼 메시지" />
+            <DockPanel Grid.Row="4" Margin="0,14,0,0">
+              <Button DockPanel.Dock="Right" Content="보내기" Click="Send_Click" IsEnabled="{Binding CanSend}" Background="#087E83" Foreground="White" BorderThickness="0" MinWidth="88" />
+              <StackPanel Orientation="Horizontal">
+                <Button Content="대화 확인 완료" Click="ObserveCurrent_Click" IsEnabled="{Binding CanObserveCurrent}" Visibility="{Binding ShowObserveCurrent, Converter={StaticResource BoolVisibility}}" Padding="12,10" />
+              </StackPanel>
+            </DockPanel>
+            <ProgressBar Grid.Row="5" Height="2" IsIndeterminate="True" Foreground="#087E83" Margin="0,12,0,0" Visibility="{Binding Working, Converter={StaticResource BoolVisibility}}" />
+            <StackPanel Grid.Row="6" Margin="0,12,0,0" Visibility="{Binding ShowSendResult, Converter={StaticResource BoolVisibility}}">
+              <TextBlock Text="{Binding SendStatus}" FontWeight="SemiBold" />
+              <TextBlock Text="{Binding SendDetail}" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,4,0,0" />
             </StackPanel>
-          </Expander>
-          <TextBlock Text="v0.5.2 · KakaoRelay" Foreground="{StaticResource Muted}" FontSize="10" Margin="0,24,0,0"/>
-        </StackPanel>
-      </ScrollViewer>
-    </TabItem>
-  </TabControl>
+          </Grid>
+          <Grid Margin="0,12,0,0" Grid.Row="1">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="*" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <DockPanel Margin="0,0,0,10">
+              <Button DockPanel.Dock="Right" Content="새로고침" Click="RefreshHistory_Click" IsEnabled="{Binding NotWorking}" Padding="10,6" />
+              <TextBlock Text="발송 이력" FontWeight="SemiBold" VerticalAlignment="Center" />
+            </DockPanel>
+            <DataGrid Grid.Row="1" ItemsSource="{Binding History}" SelectedItem="{Binding SelectedReceipt}" FontSize="12">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="시간" Binding="{Binding DisplayTime}" Width="100" />
+                <DataGridTextColumn Header="대화방" Binding="{Binding Recipient}" Width="*" MinWidth="110" />
+                <DataGridTextColumn Header="상태" Binding="{Binding DisplayStatus}" Width="115" />
+              </DataGrid.Columns>
+            </DataGrid>
+            <TextBlock Grid.Row="2" Text="{Binding HistoryHint}" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,12" />
+            <DockPanel Grid.Row="3">
+              <Button Content="기록 폴더" Click="OpenHistoryFolder_Click" DockPanel.Dock="Left" Padding="10,7" />
+              <Button Content="선택한 발송 대화 확인 완료" Click="ObserveHistory_Click" IsEnabled="{Binding CanObserveHistory}" HorizontalAlignment="Right" Padding="10,7" />
+            </DockPanel>
+          </Grid>
+        </Grid>
+      </TabItem>
+      <TabItem Header="API">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Margin="0,16,0,0">
+            <TextBlock Text="{Binding ApiStatus}" FontWeight="SemiBold" />
+            <TextBlock Text="AI는 대화방과 본문을 API로 전달합니다. 앱이 켜져 있으면 게이트웨이도 함께 실행됩니다." Foreground="{StaticResource Muted}" FontSize="12" Margin="0,8,0,12" />
+            <StackPanel>
+              <Button Content="사용법 복사" Tag="usage" Click="CopyApiDocs_Click" HorizontalAlignment="Right" Padding="12,7" />
+              <Expander Header="사용법 · 예제 펼치기" IsExpanded="False" Margin="0,4,0,12">
+                <TextBox Text="{Binding ApiDocumentation, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MaxHeight="400" Padding="10" BorderThickness="0" Background="#FAFCFC" AutomationProperties.Name="API 사용법과 예제" />
+              </Expander>
+              <Button Content="OpenAPI 복사" Tag="openapi" Click="CopyApiDocs_Click" HorizontalAlignment="Right" Padding="12,7" />
+              <Expander Header="OpenAPI · JSON 펼치기" IsExpanded="False" Margin="0,4,0,0">
+                <TextBox Text="{Binding OpenApiDocument, Mode=OneWay}" IsReadOnly="True" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" MaxHeight="400" Padding="10" BorderThickness="0" Background="#FAFCFC" FontFamily="Consolas, Malgun Gothic" FontSize="12" AutomationProperties.Name="OpenAPI JSON 명세" />
+              </Expander>
+            </StackPanel>
+            <TextBlock Text="{Binding ApiCopyStatus}" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,6,0,0" AutomationProperties.LiveSetting="Polite" />
+            <Separator Margin="0,20" />
+            <DockPanel>
+              <Button DockPanel.Dock="Right" Content="진단 시작" Click="Diagnose_Click" IsEnabled="{Binding NotWorking}" Padding="12,7" />
+              <TextBlock Text="{Binding DiagnosticTitle}" FontWeight="SemiBold" VerticalAlignment="Center" />
+            </DockPanel>
+            <TextBlock Text="{Binding DiagnosticSummary}" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,8,0,12" />
+            <Expander x:Name="DiagnosticPanel" Header="진단 세부 정보">
+              <StackPanel>
+                <DataGrid x:Name="WindowsGrid" ItemsSource="{Binding DiagnosticWindows}" SelectionChanged="DiagnosticSelection_Changed" Height="140" FontSize="11" Margin="0,8,0,0">
+                  <DataGrid.Columns>
+                    <DataGridTextColumn Header="창" Binding="{Binding DisplayTitle}" Width="*" />
+                    <DataGridTextColumn Header="상태" Binding="{Binding DisplayState}" Width="180" />
+                  </DataGrid.Columns>
+                </DataGrid>
+                <DataGrid ItemsSource="{Binding DiagnosticControls}" Height="120" FontSize="11" Margin="0,8,0,0">
+                  <DataGrid.Columns>
+                    <DataGridTextColumn Header="컨트롤" Binding="{Binding ClassName}" Width="*" />
+                    <DataGridTextColumn Header="기능" Binding="{Binding Patterns}" Width="140" />
+                  </DataGrid.Columns>
+                </DataGrid>
+                <Button Content="결과 파일" Click="OpenReport_Click" IsEnabled="{Binding HasReport}" Padding="10,6" HorizontalAlignment="Right" Margin="0,10,0,0" />
+              </StackPanel>
+            </Expander>
+            <TextBlock Text="v0.7.4 · KakaoRelay" Foreground="{StaticResource Muted}" FontSize="10" Margin="0,24,0,0" />
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+    </TabControl>
+    <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,20,16,0" Background="#EAF5F5" CornerRadius="9" Padding="8,4" IsHitTestVisible="False">
+      <TextBlock Text="{Binding BotBadge, ElementName=ChatbotPanel}" FontSize="11" Foreground="#087E83" TextWrapping="NoWrap" />
+    </Border>
+  </Grid>
 </Window>

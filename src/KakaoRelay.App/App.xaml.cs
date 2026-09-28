@@ -9,6 +9,8 @@ public partial class App : Application
     private Mutex? instanceGate;
     private bool ownsGate;
     private RelayApi? api;
+    private LocalChatReader? chatReader;
+    private CliAiRunner? aiRunner;
     private TrayHost? tray;
     private EventWaitHandle? showSignal;
     private RegisteredWaitHandle? showRegistration;
@@ -16,6 +18,21 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        if (e.Args.Length == 3 && e.Args[0] == "--send-image")
+        {
+            try
+            {
+                var command = System.Text.Json.JsonSerializer.Deserialize<ApiSendCommand>(File.ReadAllText(e.Args[1]), ReportStore.JsonOptions)
+                    ?? throw new InvalidDataException("이미지 요청이 없습니다.");
+                if (!command.IsImage) throw new InvalidDataException("이미지 요청만 지원합니다.");
+                var sender = new ApiSendService(TestSender.DefaultLedger, ConversationCatalog.Scan, () => new KakaoTestTransport(), () => new KakaoImageTransport());
+                var receipt = await sender.SendAsync(command);
+                await File.WriteAllTextAsync(e.Args[2], System.Text.Json.JsonSerializer.Serialize(receipt, ReportStore.JsonOptions));
+                Shutdown(receipt.EnterPosted && receipt.InputCleared == true ? 0 : 2);
+            }
+            catch { Shutdown(2); }
+            return;
+        }
         if (e.Args.Length > 0 && e.Args[0] == "--worker")
         {
             if (e.Args.Length != 2) { Shutdown(64); return; }
@@ -61,10 +78,15 @@ public partial class App : Application
         startingApi = true;
         try
         {
-            var sends = new ApiSendService(TestSender.DefaultLedger, ConversationCatalog.Scan, () => new KakaoTestTransport());
+            var sends = new ApiSendService(TestSender.DefaultLedger, ConversationCatalog.Scan, () => new KakaoTestTransport(), () => new KakaoImageTransport());
+            chatReader = new LocalChatReader();
+            aiRunner = new CliAiRunner();
+            var ai = new AiService(chatReader, new AiSettingsStore(AiSettingsStore.DefaultPath), aiRunner);
+            Task<TestSendReceipt> Send(ApiSendCommand command) => main.Dispatcher.InvokeAsync(() => main.SendFromApiAsync(() => sends.SendAsync(command))).Task.Unwrap();
+            main.InitializeAi(ai, Send);
             api = await RelayApi.StartAsync(RelayApi.DefaultConnectionPath, ConversationCatalog.Scan,
                 () => TestSender.ReadHistory(TestSender.DefaultLedger),
-                command => main.Dispatcher.InvokeAsync(() => main.SendFromApiAsync(() => sends.SendAsync(command))).Task.Unwrap());
+                Send, ai);
             main.SetApiStatus("AI API 연결됨 · 로컬 게이트웨이 실행 중");
         }
         catch { main.SetApiStatus("AI API 시작 실패 · 앱을 다시 실행하세요."); }
@@ -104,6 +126,8 @@ public partial class App : Application
             catch { }
         }
         if (ownsGate) instanceGate?.ReleaseMutex();
+        chatReader?.Dispose();
+        aiRunner?.Dispose();
         instanceGate?.Dispose();
         base.OnExit(e);
     }

@@ -20,10 +20,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
     public ObservableCollection<ConversationTarget> Conversations { get; } = [];
     public ObservableCollection<TestSendReceipt> History { get; } = [];
-    public bool Working => working;
+    public bool Working => working || ChatbotPanel.Busy || ChatbotPanel.BotsRunning || ChatbotPanel.ImagesBusy;
     public bool NotWorking => !working && !shuttingDown;
     public bool CanEdit => !working && !shuttingDown;
-    public void PrepareShutdown() { shuttingDown = true; ApiStatus = "작업 완료 후 종료 중"; RefreshAll(); }
+    public void PrepareShutdown() { shuttingDown = true; ChatbotPanel.Stop(); ApiStatus = "작업 완료 후 종료 중"; RefreshAll(); }
     public bool ShowSendResult => compose.Submitted || currentReceipt is not null;
     public bool ShowObserveCurrent => currentReceipt is { Status: "needs-review", EnterPosted: true };
     public bool CanSend => CanEdit && targetReady && selectedConversation?.Selectable == true && !string.IsNullOrWhiteSpace(messageBody);
@@ -68,8 +68,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public MainWindow()
     {
         InitializeComponent(); DataContext = this;
+        Title = "KakaoRelay v0.7.4";
         Loaded += async (_, _) => { LoadHistory(); await RefreshRoomsAsync(); };
+        ChatbotPanel.ComposeRequested += async (room, text) =>
+        {
+            if (!CanEdit) return;
+            if (!string.IsNullOrWhiteSpace(MessageBody)) { SetApiStatus("기존 작성 내용을 먼저 처리한 뒤 AI 답변을 가져오세요."); return; }
+            await RefreshRoomsAsync();
+            var matches = Conversations.Where(r => r.Title == room.Title && r.Selectable).ToList();
+            if (matches.Count != 1) { SetApiStatus("AI 답변을 받을 카카오톡 방을 열고 다시 가져오세요."); return; }
+            MessageBody = text; SelectedConversation = matches[0]; MainTabs.SelectedIndex = 1;
+        };
     }
+    public void InitializeAi(AiService ai, Func<ApiSendCommand, Task<TestSendReceipt>> send) => ChatbotPanel.Initialize(ai, send);
     private void Refresh([CallerMemberName] string? property = null) => PropertyChanged?.Invoke(this, new(property));
     private void RefreshAll() => Refresh(string.Empty);
     private void SetWorking(bool value) { working = value; RefreshAll(); }
@@ -235,6 +246,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         "observed-in-chat" => "새 발신 말풍선 확인이 기록되었습니다. 상대방 수신·읽음 여부는 별도입니다.",
         "blocked-before-input" => Friendly(receipt.Detail),
+        "needs-review" when receipt.Kind == "image" => receipt.EnterPosted ? "이미지 전송을 요청했습니다. 대화의 새 첨부 이미지를 확인하세요. 자동 재전송하지 않습니다." : "이미지 첨부 결과 확인이 필요합니다. 대화를 확인하고 중복 전송하지 마세요.",
         "needs-review" when receipt.EnterPosted => (receipt.InputCleared == true ? "입력창이 비워졌습니다. " : "입력창 비움을 확인하지 못했습니다. ") + "새 발신 말풍선을 확인한 뒤 ‘대화에서 확인 완료’를 누르세요. 자동 재전송하지 않습니다.",
         "continued-after-visual-review" => "이전 시험에서 남은 초안을 별도 요청으로 이어 처리한 기록입니다.",
         _ => "완료되지 않은 작업 기록입니다. 대화를 먼저 확인하고 중복 전송하지 마세요."

@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src/KakaoRelay.AI/KakaoRelay.AI.csproj" />
+  <Project Path="src/KakaoRelay.Portable/KakaoRelay.Portable.csproj" />
+  <Project Path="tests/KakaoRelay.Portable.Tests/KakaoRelay.Portable.Tests.csproj" />
+</Solution>

@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../src/KakaoRelay.AI/KakaoRelay.AI.csproj" /><Compile Include="../KakaoRelay.Tests/AiChecks.cs" Link="AiChecks.cs" /><Compile Include="../KakaoRelay.Tests/ResidentCliChecks.cs" Link="ResidentCliChecks.cs" /></ItemGroup>
+</Project>

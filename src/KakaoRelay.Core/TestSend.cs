@@ -35,6 +35,8 @@ public sealed class TestSendReceipt
     public DateTimeOffset StartedAt { get; set; } = DateTimeOffset.Now;
     public DateTimeOffset? FinishedAt { get; set; }
     public bool EnterPosted { get; set; }
+    public string Kind { get; set; } = "text";
+    public bool AttachmentQueued { get; set; }
     public bool? InputCleared { get; set; }
     public string ForegroundBefore { get; set; } = "";
     public string ForegroundAfter { get; set; } = "";
@@ -173,7 +175,7 @@ public static class TestSender
         return result.OrderByDescending(r => r.StartedAt).ToList();
     }
 
-    private static void Save(string path, TestSendReceipt receipt)
+    internal static void Save(string path, TestSendReceipt receipt)
     {
         var bytes = JsonSerializer.SerializeToUtf8Bytes(receipt, ReportStore.JsonOptions);
         using (var stream = new FileStream(path + ".tmp", FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))

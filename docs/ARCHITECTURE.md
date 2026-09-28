@@ -33,5 +33,6 @@ EM_REPLACESEL로 본문을 반영한 후 읽어 비교하고 Enter 요청을 게
 Win32/UIA 진단은 별도 worker에서 실행한다. 제공자 호출이 멈추면 부모가 제한 시간 후 worker만 종료한다.
 UIA는 창 구조와 패턴 지원 여부만 기록한다.
 
-최근 대화 조회는 PC 로컬 암호화 DB를 읽는 별도 어댑터가 필요하다. 현재 미구현이며
-API capabilities에서도 지원하지 않는다고 반환한다. 상세는 LOCAL-DATA.md에 있다.
+v0.6의 LocalChatReader는 실행 중인 카카오톡에서 DB별 키 후보를 HMAC 검증하고, 안정된 DB/WAL 스냅샷의 마지막 커밋까지 적용한다. Windows SQLite 엔진에서 메모리 DB를 읽으며 원본과 프로세스 메모리를 수정하지 않는다.
+
+KakaoRelay.AI는 net10.0 공통 라이브러리다. 페르소나·CLI 설정 저장, 프롬프트 구성, Codex → Grok → Claude fallback, 취소/시간 제한을 담당한다. WPF 앱과 macOS/Linux용 KakaoRelay.Portable이 공유한다. Portable은 ImportedChatReader와 loopback 브라우저 UI를 사용하고 Win32 전송 코드에 의존하지 않는다. 상세는 [AI 문서](AI.md)와 [Portable 빌드](PORTABLE.md)에 있다.

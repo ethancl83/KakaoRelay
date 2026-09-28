@@ -7,28 +7,45 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace KakaoRelay.Core;
 
-public sealed class ApiFailure(int statusCode, string code, string detail) : Exception(detail)
-{
-    public int StatusCode { get; } = statusCode;
-    public string Code { get; } = code;
-}
-
 public sealed record ApiSendCommand(string RequestId, string Recipient, string Message)
 {
+    public PersonaAttachment? Attachment { get; init; }
+    public string? ImagePath { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore] public bool IsImage => Attachment is not null || ImagePath is not null;
     public void Validate()
     {
-        if (!ValidId(RequestId) || string.IsNullOrWhiteSpace(Recipient) || string.IsNullOrWhiteSpace(Message) || Message.Contains('\0'))
+        if (!ValidId(RequestId) || string.IsNullOrWhiteSpace(Recipient) || Message is null || (!IsImage && string.IsNullOrWhiteSpace(Message)) || Message.Contains('\0'))
             throw new ApiFailure(400, "invalid_request", "requestId, recipient, message를 확인하세요.");
+        if (ImagePath is not null && (Attachment is not null || Message.Length != 0 || !Path.IsPathFullyQualified(ImagePath) || ImagePath.Contains('\0')))
+            throw new ApiFailure(400, "invalid_request", "imagePath는 로컬 이미지의 절대 경로이며 attachment와 함께 사용할 수 없습니다.");
+        if (Attachment is not null)
+        {
+            if (Message.Length != 0 || !ValidId(Attachment.PersonaId) || !PersonaImageCatalog.Providers.Contains(Attachment.Provider) || !Guid.TryParseExact(Attachment.ImageId, "N", out _))
+                throw new ApiFailure(400, "invalid_request", "이미지 요청은 빈 message와 등록된 attachment 식별자를 사용하세요. 텍스트는 별도 요청으로 보냅니다.");
+        }
     }
     public static bool ValidId(string? id) => Regex.IsMatch(id ?? "", @"\A[a-zA-Z0-9_-]{1,80}\z");
-    public string Fingerprint() => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { Recipient, Message }))));
+    public string Fingerprint() => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(ImagePath is not null
+        ? JsonSerializer.Serialize(new { Recipient, ImagePath = Path.GetFullPath(ImagePath) }) : Attachment is null
+        ? JsonSerializer.Serialize(new { Recipient, Message }) : JsonSerializer.Serialize(new { Recipient, Message, Attachment }))));
+}
+
+public sealed record ApiImageCommand(string RequestId, string Recipient, string? ImagePath = null, PersonaAttachment? Attachment = null)
+{
+    public ApiSendCommand ToSend()
+    {
+        var command = new ApiSendCommand(RequestId, Recipient, "") { ImagePath = ImagePath, Attachment = Attachment };
+        command.Validate();
+        return command;
+    }
 }
 
 // Binds an AI request ID to its content before touching KakaoTalk. Receipts survive room closure.
-public sealed class ApiSendService(string ledger, Func<List<ConversationTarget>> scan, Func<ITestSendTransport> transport)
+public sealed class ApiSendService(string ledger, Func<List<ConversationTarget>> scan, Func<ITestSendTransport> transport, Func<IImageSendTransport>? imageTransport = null, string? imageTransferRoot = null)
 {
     private readonly SemaphoreSlim gate = new(1);
     private sealed record Reservation(string Fingerprint, string EngineFingerprint);
@@ -59,14 +76,16 @@ public sealed class ApiSendService(string ledger, Func<List<ConversationTarget>>
                 var matches = scan().Where(r => r.Title == command.Recipient && r.Selectable).ToList();
                 if (matches.Count != 1) throw new ApiFailure(409, "room_unavailable", "해당 이름의 열린 대화방을 하나로 확인할 수 없습니다.");
                 var room = matches[0];
-                var request = new TestSendRequest(command.RequestId, room.Title, command.Message, room.ProcessId, room.Handle, DateTimeOffset.Now.AddMinutes(5), true);
+                if (command.IsImage && imageTransport is null) throw new ApiFailure(409, "image_unavailable", "이미지 전송 어댑터가 없습니다.");
+                var imagePath = command.ImagePath is not null ? ImageSender.ValidateLocalImage(command.ImagePath) : command.Attachment is null ? null : ImageSender.ResolvePath(command.Attachment);
+                var request = new TestSendRequest(command.RequestId, room.Title, imagePath is null ? command.Message : ImageSender.FileIdentity(imagePath), room.ProcessId, room.Handle, DateTimeOffset.Now.AddMinutes(5), true);
                 request.Validate();
                 using (var file = new FileStream(reservationPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))
                 {
                     JsonSerializer.Serialize(file, new Reservation(command.Fingerprint(), request.Fingerprint()), ReportStore.JsonOptions);
                     file.Flush(true);
                 }
-                return TestSender.SendOnce(request, transport(), ledger);
+                return imagePath is null ? TestSender.SendOnce(request, transport(), ledger) : ImageSender.SendOnce(request, imagePath, imageTransport!(), ledger, imageTransferRoot);
             });
         }
         finally { gate.Release(); }
@@ -84,11 +103,12 @@ public sealed class RelayApi : IAsyncDisposable
     private RelayApi(WebApplication app, string discoveryPath, ApiConnection connection)
     { this.app = app; this.discoveryPath = discoveryPath; Connection = connection; }
 
-    public static async Task<RelayApi> StartAsync(string discoveryPath, Func<List<ConversationTarget>> rooms, Func<List<TestSendReceipt>> history, Func<ApiSendCommand, Task<TestSendReceipt>> send)
+    public static async Task<RelayApi> StartAsync(string discoveryPath, Func<List<ConversationTarget>> rooms, Func<List<TestSendReceipt>> history, Func<ApiSendCommand, Task<TestSendReceipt>> send, AiService? ai = null)
     {
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         var expectedAuth = Encoding.UTF8.GetBytes("Bearer " + token);
         var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions { Args = [] });
+        builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Encoder = PromptJson.Encoder);
         builder.Logging.ClearProviders();
         builder.WebHost.ConfigureKestrel(options =>
         {
@@ -111,14 +131,32 @@ public sealed class RelayApi : IAsyncDisposable
             catch
             { context.Response.StatusCode = 500; await context.Response.WriteAsJsonAsync(new { code = "unknown_result", detail = "같은 requestId로 결과를 조회하세요. 새 ID로 자동 재전송하지 마세요." }); }
         });
-        app.MapGet("/v1/health", () => Results.Json(new { status = "ready", version = "0.5.2", application = "KakaoRelay" }));
+        app.MapGet("/v1/health", () => Results.Json(new { status = "ready", version = "0.7.4", application = "KakaoRelay" }));
         app.MapGet("/v1/capabilities", () => Results.Json(new
         {
             send = true, idempotency = "requestId", requiresOpenRoom = true, maxMessageCharacters = (int?)null,
-            recentMessages = new { supported = false, reason = "PC 저장 대화 DB는 확인했지만 암호화 형식의 읽기 연동은 아직 구현하지 않았습니다." },
-            deliveryVerification = "manual", endpoints = new[] { "GET /v1/rooms", "POST /v1/send", "GET /v1/requests", "GET /v1/requests/{requestId}" }
+            imageSend = new { supported = true, endpoint = "/v1/send-image", transport = "WM_DROPFILES + HWND", computerUse = false },
+            recentMessages = new { supported = ai is not null, reason = "SQLCipher 4 · 키가 메모리에 로드된 방 · DB/WAL 읽기 전용" },
+            aiChat = ai is not null,
+            deliveryVerification = "manual", endpoints = new[] { "GET /v1/rooms", "POST /v1/send", "POST /v1/send-image", "GET /v1/requests", "GET /v1/requests/{requestId}" }.Concat(ai is null ? [] : new[] { "GET /v1/local/rooms", "GET /v1/local/messages", "GET /v1/ai/settings", "PUT /v1/ai/settings", "GET /v1/ai/providers", "POST /v1/ai/generate", "GET /v1/personas/{personaId}/images" })
         }));
         app.MapGet("/v1/rooms", async () => Results.Json(await Task.Run(rooms)));
+        app.MapPost("/v1/send-image", async (ApiImageCommand command) => Results.Json(await send(command.ToSend())));
+        if (ai is not null)
+        {
+            app.MapGet("/v1/personas/{personaId}/images", (string personaId) =>
+            {
+                if (!ApiSendCommand.ValidId(personaId) || !ai.Settings.Load().Personas.Any(p => p.Id == personaId)) throw new ApiFailure(404, "persona_unavailable", "페르소나가 없습니다.");
+                var catalog = new PersonaImageCatalog(AiSettings.ImageRoot(personaId));
+                return Results.Json(new { personaId, appliedProvider = catalog.AppliedProvider(), versions = PersonaImageCatalog.Providers.ToDictionary(p => p, p => catalog.Store(p).Load()) });
+            });
+            app.MapGet("/v1/local/rooms", async (CancellationToken ct) => Results.Json(await ai.Chats.RoomsAsync(ct)));
+            app.MapGet("/v1/local/messages", async (string profile, string roomId, int? limit, CancellationToken ct) => Results.Json(await ai.Chats.ReadAsync(profile, roomId, limit ?? 100, ct)));
+            app.MapGet("/v1/ai/settings", () => Results.Json(ai.Settings.Load()));
+            app.MapPut("/v1/ai/settings", (AiSettings settings) => { ai.Settings.Save(settings); return Results.Ok(); });
+            app.MapGet("/v1/ai/providers", () => Results.Json(CliAiRunner.Status(ai.Settings.Load())));
+            app.MapPost("/v1/ai/generate", async (AiCommand command, CancellationToken ct) => Results.Json(await ai.GenerateAsync(command, ct)));
+        }
         app.MapGet("/v1/requests", async () => Results.Json(await Task.Run(history)));
         app.MapGet("/v1/requests/{id}", async (string id) =>
         {
@@ -138,7 +176,7 @@ public sealed class RelayApi : IAsyncDisposable
         try
         {
             await app.StartAsync();
-            var connection = new ApiConnection(app.Urls.Single(), token, Environment.ProcessId, "0.5.2");
+            var connection = new ApiConnection(app.Urls.Single(), token, Environment.ProcessId, "0.7.4");
             Directory.CreateDirectory(Path.GetDirectoryName(discoveryPath)!);
             var temporary = discoveryPath + ".tmp";
             await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(connection, ReportStore.JsonOptions));

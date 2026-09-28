@@ -38,3 +38,6 @@ connection.json.*
 .codex/
 .idea/
 TestResults/
+**/persona-images/
+ai-settings.json
+**/ai-sessions/

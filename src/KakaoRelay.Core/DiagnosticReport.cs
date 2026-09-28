@@ -93,7 +93,7 @@ public static class ReportAssessment
 
 public static class ReportStore
 {
-    public static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+    public static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase, Encoder = PromptJson.Encoder };
     public static void Save(string path, DiagnosticReport report)
     {
         var fullPath = Path.GetFullPath(path);

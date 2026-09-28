@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "KakaoRelay Local Gateway",
-    "version": "0.5.2",
-    "description": "앱과 같은 프로세스의 로컬 API. %LOCALAPPDATA%/KakaoRelay/connection.json에서 baseUrl과 token을 읽습니다. 글자 수 제한 없음. 같은 작업은 동일 requestId 사용. 최근 메시지 읽기는 현재 미지원."
+    "version": "0.7.4",
+    "description": "인증된 로컬 Windows 게이트웨이. 메시지 전송, SQLCipher 4 로컬 대화 읽기, CLI AI 분석·페르소나 설정."
   },
   "security": [
     {
@@ -412,6 +412,315 @@
           }
         }
       }
+    },
+    "/v1/local/rooms": {
+      "get": {
+        "operationId": "getLocalRooms",
+        "summary": "카카오톡 로컬 방 새로고침",
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LocalRoom"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "잘못된 설정 또는 요청"
+          },
+          "401": {
+            "description": "인증 필요"
+          },
+          "409": {
+            "description": "키 미확인, DB 변경 중 또는 AI 작업 중"
+          },
+          "503": {
+            "description": "AI 프로바이더 실행 실패"
+          }
+        }
+      }
+    },
+    "/v1/local/messages": {
+      "get": {
+        "operationId": "getLocalMessages",
+        "summary": "최근 로컬 메시지",
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatContext"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "잘못된 설정 또는 요청"
+          },
+          "401": {
+            "description": "인증 필요"
+          },
+          "409": {
+            "description": "키 미확인, DB 변경 중 또는 AI 작업 중"
+          },
+          "503": {
+            "description": "AI 프로바이더 실행 실패"
+          }
+        },
+        "parameters": [
+          {
+            "name": "profile",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "roomId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 100
+            }
+          }
+        ]
+      }
+    },
+    "/v1/ai/settings": {
+      "get": {
+        "operationId": "getAiSettings",
+        "summary": "AI 설정 조회",
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "잘못된 설정 또는 요청"
+          },
+          "401": {
+            "description": "인증 필요"
+          },
+          "409": {
+            "description": "키 미확인, DB 변경 중 또는 AI 작업 중"
+          },
+          "503": {
+            "description": "AI 프로바이더 실행 실패"
+          }
+        }
+      },
+      "put": {
+        "operationId": "saveAiSettings",
+        "summary": "AI 설정 전체 저장",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiSettings"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "저장 완료"
+          },
+          "400": {
+            "description": "설정 오류"
+          }
+        }
+      }
+    },
+    "/v1/ai/providers": {
+      "get": {
+        "operationId": "getAiProviders",
+        "summary": "CLI 설치 상태 조회",
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CliStatus"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "잘못된 설정 또는 요청"
+          },
+          "401": {
+            "description": "인증 필요"
+          },
+          "409": {
+            "description": "키 미확인, DB 변경 중 또는 AI 작업 중"
+          },
+          "503": {
+            "description": "AI 프로바이더 실행 실패"
+          }
+        }
+      }
+    },
+    "/v1/ai/generate": {
+      "post": {
+        "operationId": "generateAiReply",
+        "summary": "분석·질문·답변 생성 (발송 없음)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiCommand"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "잘못된 설정 또는 요청"
+          },
+          "401": {
+            "description": "인증 필요"
+          },
+          "409": {
+            "description": "키 미확인, DB 변경 중 또는 AI 작업 중"
+          },
+          "503": {
+            "description": "AI 프로바이더 실행 실패"
+          }
+        }
+      }
+    },
+    "/v1/send-image": {
+      "post": {
+        "operationId": "sendImage",
+        "summary": "이미지 1장 첨부·전송 (Windows 핸들, Computer Use 없음)",
+        "description": "같은 requestId와 같은 본문은 기존 결과 반환. 이름이 정확히 일치하는 열린 방 하나만 허용. 자동 재전송 없음.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageCommand"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "처리 결과. HTTP 200만으로 발송 완료를 판단하지 않습니다.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Receipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "오류 code/detail을 확인하세요.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "오류 code/detail을 확인하세요.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "오류 code/detail을 확인하세요.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "오류 code/detail을 확인하세요.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/personas/{personaId}/images": {
+      "get": {
+        "operationId": "listPersonaImages",
+        "summary": "페르소나의 Astra/Grok 이미지와 적용 상태 조회 (읽기 전용)",
+        "parameters": [
+          {
+            "name": "personaId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "personaId, appliedProvider, versions: {astra, grok}. 각 버전의 referenceId, active, images."
+          },
+          "404": {
+            "description": "페르소나 없음"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -457,6 +766,13 @@
           "message": {
             "type": "string",
             "description": "본문. 줄바꿈 지원. 임의 글자 수 제한 없음. 공백뿐인 본문 및 NUL 금지."
+          },
+          "imagePath": {
+            "type": "string",
+            "description": "PC 로컬 이미지 절대 경로. PNG/JPEG/GIF/BMP/WebP."
+          },
+          "attachment": {
+            "$ref": "#/components/schemas/PersonaAttachment"
           }
         }
       },
@@ -557,6 +873,16 @@
           },
           "foregroundAfter": {
             "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "text",
+              "image"
+            ]
+          },
+          "attachmentQueued": {
+            "type": "boolean",
+            "description": "파일 첨부 요청 완료. 발송 성공 증거가 아님."
           }
         }
       },
@@ -579,7 +905,7 @@
             "type": "object",
             "properties": {
               "supported": {
-                "const": false
+                "type": "boolean"
               },
               "reason": {
                 "type": "string"
@@ -594,6 +920,428 @@
             "items": {
               "type": "string"
             }
+          },
+          "aiChat": {
+            "type": "boolean"
+          }
+        }
+      },
+      "LocalRoom": {
+        "type": "object",
+        "required": [
+          "profile",
+          "id",
+          "title",
+          "readable"
+        ],
+        "properties": {
+          "profile": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "readable": {
+            "type": "boolean"
+          }
+        }
+      },
+      "LocalMessage": {
+        "type": "object",
+        "required": [
+          "id",
+          "authorId",
+          "author",
+          "time",
+          "type",
+          "text",
+          "deleted"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "authorId": {
+            "type": "string"
+          },
+          "author": {
+            "type": "string"
+          },
+          "time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "type": {
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          },
+          "deleted": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ChatContext": {
+        "type": "object",
+        "required": [
+          "room",
+          "messages",
+          "readAt"
+        ],
+        "properties": {
+          "room": {
+            "$ref": "#/components/schemas/LocalRoom"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LocalMessage"
+            }
+          },
+          "readAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "BotPersona": {
+        "type": "object",
+        "required": [
+          "name",
+          "role",
+          "tone",
+          "style",
+          "instructions"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "tone": {
+            "type": "string"
+          },
+          "style": {
+            "type": "string"
+          },
+          "instructions": {
+            "type": "string"
+          }
+        }
+      },
+      "AiProvider": {
+        "type": "object",
+        "required": [
+          "id",
+          "enabled",
+          "executable",
+          "model",
+          "effort"
+        ],
+        "properties": {
+          "id": {
+            "enum": [
+              "codex",
+              "grok",
+              "claude"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "executable": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "effort": {
+            "type": "string"
+          }
+        }
+      },
+      "AiSettings": {
+        "type": "object",
+        "required": [
+          "provider",
+          "contextMessages",
+          "timeoutSeconds",
+          "persona",
+          "providers"
+        ],
+        "properties": {
+          "provider": {
+            "enum": [
+              "auto",
+              "codex",
+              "grok",
+              "claude"
+            ]
+          },
+          "contextMessages": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 10,
+            "maximum": 900
+          },
+          "persona": {
+            "$ref": "#/components/schemas/BotPersona"
+          },
+          "providers": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {
+              "$ref": "#/components/schemas/AiProvider"
+            }
+          },
+          "personas": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {
+              "$ref": "#/components/schemas/PersonaProfile"
+            }
+          },
+          "roomPersonas": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "JSON.stringify([profile, roomId]) 키 → personaId"
+          },
+          "roomReplyModes": {
+            "type": "object",
+            "description": "JSON.stringify([profile, roomId]) 키로 저장하는 방별 답변 방식. 없으면 이전 replyMode 설정 사용.",
+            "additionalProperties": {
+              "enum": [
+                "immediate",
+                "trigger",
+                "context"
+              ],
+              "type": "string"
+            }
+          }
+        }
+      },
+      "AiCommand": {
+        "type": "object",
+        "required": [
+          "profile",
+          "roomId"
+        ],
+        "properties": {
+          "profile": {
+            "type": "string"
+          },
+          "roomId": {
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "analyze",
+              "reply",
+              "chat"
+            ],
+            "default": "analyze"
+          },
+          "instruction": {
+            "type": "string",
+            "maxLength": 10000,
+            "default": ""
+          }
+        }
+      },
+      "AiResult": {
+        "type": "object",
+        "required": [
+          "text",
+          "provider",
+          "model",
+          "effort",
+          "mode",
+          "room",
+          "messageCount",
+          "attempts"
+        ],
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "effort": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "room": {
+            "$ref": "#/components/schemas/LocalRoom"
+          },
+          "messageCount": {
+            "type": "integer"
+          },
+          "attempts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "provider",
+                "status"
+              ],
+              "properties": {
+                "provider": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "personaId": {
+            "type": "string"
+          },
+          "emotion": {
+            "type": "string"
+          },
+          "attachment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PersonaAttachment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "CliStatus": {
+        "type": "object",
+        "required": [
+          "provider",
+          "installed",
+          "path",
+          "detail"
+        ],
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "installed": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      },
+      "PersonaAttachment": {
+        "type": "object",
+        "required": [
+          "personaId",
+          "provider",
+          "imageId"
+        ],
+        "properties": {
+          "personaId": {
+            "type": "string"
+          },
+          "provider": {
+            "enum": [
+              "astra",
+              "grok"
+            ]
+          },
+          "imageId": {
+            "type": "string",
+            "pattern": "^[a-fA-F0-9]{32}$"
+          }
+        }
+      },
+      "ImageCommand": {
+        "type": "object",
+        "required": [
+          "requestId",
+          "recipient"
+        ],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{1,80}$",
+            "description": "동일 작업의 재시도에는 동일 ID"
+          },
+          "recipient": {
+            "type": "string",
+            "description": "rooms의 정확한 title"
+          },
+          "imagePath": {
+            "type": "string",
+            "description": "PC 로컬 이미지 절대 경로. PNG/JPEG/GIF/BMP/WebP."
+          },
+          "attachment": {
+            "$ref": "#/components/schemas/PersonaAttachment"
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "imagePath"
+            ],
+            "not": {
+              "required": [
+                "attachment"
+              ]
+            }
+          },
+          {
+            "required": [
+              "attachment"
+            ],
+            "not": {
+              "required": [
+                "imagePath"
+              ]
+            }
+          }
+        ]
+      },
+      "PersonaProfile": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "persona": {
+            "$ref": "#/components/schemas/BotPersona"
+          },
+          "attachImages": {
+            "type": "boolean"
           }
         }
       }

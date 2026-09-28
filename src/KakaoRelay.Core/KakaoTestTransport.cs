@@ -12,6 +12,7 @@ public sealed class KakaoTestTransport : ITestSendTransport
     private nint editor;
     private nint target;
     private TestSendRequest? request;
+    internal nint EditorHandle => editor;
     public string ForegroundWindow => NativeWindows.Format(NativeWindows.GetForegroundWindow());
 
     [DllImport("user32.dll")] private static extern int GetDlgCtrlID(nint handle);

@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/KakaoRelay.AI/KakaoRelay.AI.csproj" />
     <Project Path="src/KakaoRelay.Core/KakaoRelay.Core.csproj" />
     <Project Path="src/KakaoRelay.App/KakaoRelay.App.csproj" />
   </Folder>
