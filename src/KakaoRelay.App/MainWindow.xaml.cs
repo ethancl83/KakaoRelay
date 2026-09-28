@@ -30,6 +30,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public bool CanObserveCurrent => !working && currentReceipt is { Status: "needs-review", EnterPosted: true };
     public bool CanObserveHistory => !working && selectedReceipt is { Status: "needs-review", EnterPosted: true };
     public string ApiStatus { get; private set; } = "AI 연결 준비 중";
+    public string ApiDocumentation { get; } = ReadBundledDocument("API.md");
+    public string OpenApiDocument { get; } = ReadBundledDocument("openapi.json");
+    public string ApiCopyStatus { get; private set; } = "내용을 선택해 복사하거나 복사 버튼으로 전체를 복사하세요.";
     public void SetApiStatus(string status) { ApiStatus = status; RefreshAll(); }
     public string ConnectionText { get; private set; } = "열린 대화방을 확인하고 있습니다.";
     public string RecipientHeading => selectedConversation is null ? "메시지 작성" : $"{selectedConversation.Title}에게 보내기";
@@ -200,7 +203,27 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     }
     private void DiagnosticSelection_Changed(object sender, SelectionChangedEventArgs e) { DiagnosticControls = (WindowsGrid.SelectedItem as WindowSnapshot)?.Controls ?? []; Refresh(nameof(DiagnosticControls)); }
     private void OpenReport_Click(object sender, RoutedEventArgs e) => OpenPath(reportPath);
-    private void OpenApiDocs_Click(object sender, RoutedEventArgs e) => OpenPath(Path.Combine(AppContext.BaseDirectory, "docs", "API.md"));
+    private static string ReadBundledDocument(string name)
+    {
+        using var stream = typeof(MainWindow).Assembly.GetManifestResourceStream($"KakaoRelay.Docs.{name}")
+            ?? throw new InvalidOperationException($"Missing bundled documentation: {name}");
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    }
+    private void CopyApiDocs_Click(object sender, RoutedEventArgs e)
+    {
+        var isOpenApi = (sender as Button)?.Tag as string == "openapi";
+        try
+        {
+            Clipboard.SetText(isOpenApi ? OpenApiDocument : ApiDocumentation);
+            ApiCopyStatus = isOpenApi ? "OpenAPI 명세 전체를 복사했습니다." : "API 사용법과 예제 전체를 복사했습니다.";
+        }
+        catch (System.Runtime.InteropServices.ExternalException)
+        {
+            ApiCopyStatus = "클립보드를 사용 중입니다. 복사 버튼을 다시 눌러주세요.";
+        }
+        Refresh(nameof(ApiCopyStatus));
+    }
     private void OpenHistoryFolder_Click(object sender, RoutedEventArgs e) { Directory.CreateDirectory(TestSender.DefaultLedger); OpenPath(TestSender.DefaultLedger); }
     private void OpenPath(string? path)
     {

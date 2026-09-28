@@ -1,4 +1,6 @@
-# KakaoRelay Gateway API · v1 (앱 v0.5)
+# KakaoRelay Gateway API · v1 (앱 v0.5.2)
+
+앱의 ‘연결 · API’ 탭에서 이 사용법과 OpenAPI JSON 명세를 확인하고 각각 전체 복사할 수 있습니다.
 
 앱을 실행하면 같은 프로세스에서 로컬 HTTP API가 시작됩니다. 별도 서버 실행이나 Computer Use가 필요 없습니다.
 창의 X를 눌러도 트레이에서 API가 계속 실행됩니다. 트레이의 **완전 종료**로 앱과 API를 종료합니다.

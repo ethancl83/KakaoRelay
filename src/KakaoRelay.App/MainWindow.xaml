@@ -39,7 +39,21 @@
         <StackPanel Margin="0,16,0,0">
           <TextBlock Text="{Binding ApiStatus}" FontWeight="SemiBold"/>
           <TextBlock Text="AI는 대화방과 본문을 API로 전달합니다. 앱이 켜져 있으면 게이트웨이도 함께 실행됩니다." Foreground="{StaticResource Muted}" FontSize="12" Margin="0,8,0,12"/>
-          <Button Content="API 명세 보기" Click="OpenApiDocs_Click" HorizontalAlignment="Left" Padding="12,7"/>
+          <TabControl BorderBrush="#D2DFE2" Background="White">
+            <TabItem Header="사용법 · 예제">
+              <DockPanel Margin="10">
+                <Button DockPanel.Dock="Top" Content="사용법 복사" Tag="usage" Click="CopyApiDocs_Click" HorizontalAlignment="Right" Padding="12,7" Margin="0,0,0,8"/>
+                <TextBox Text="{Binding ApiDocumentation, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Height="270" Padding="10" BorderThickness="0" Background="#FAFCFC" AutomationProperties.Name="API 사용법과 예제"/>
+              </DockPanel>
+            </TabItem>
+            <TabItem Header="OpenAPI · JSON">
+              <DockPanel Margin="10">
+                <Button DockPanel.Dock="Top" Content="OpenAPI 복사" Tag="openapi" Click="CopyApiDocs_Click" HorizontalAlignment="Right" Padding="12,7" Margin="0,0,0,8"/>
+                <TextBox Text="{Binding OpenApiDocument, Mode=OneWay}" IsReadOnly="True" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Height="270" Padding="10" BorderThickness="0" Background="#FAFCFC" FontFamily="Consolas, Malgun Gothic" FontSize="12" AutomationProperties.Name="OpenAPI JSON 명세"/>
+              </DockPanel>
+            </TabItem>
+          </TabControl>
+          <TextBlock Text="{Binding ApiCopyStatus}" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,6,0,0" AutomationProperties.LiveSetting="Polite"/>
           <Separator Margin="0,20"/>
           <DockPanel><Button DockPanel.Dock="Right" Content="진단 시작" Click="Diagnose_Click" IsEnabled="{Binding NotWorking}" Padding="12,7"/><TextBlock Text="{Binding DiagnosticTitle}" FontWeight="SemiBold" VerticalAlignment="Center"/></DockPanel>
           <TextBlock Text="{Binding DiagnosticSummary}" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,8,0,12"/>
@@ -50,7 +64,7 @@
               <Button Content="결과 파일" Click="OpenReport_Click" IsEnabled="{Binding HasReport}" Padding="10,6" HorizontalAlignment="Right" Margin="0,10,0,0"/>
             </StackPanel>
           </Expander>
-          <TextBlock Text="v0.5 · KakaoRelay" Foreground="{StaticResource Muted}" FontSize="10" Margin="0,24,0,0"/>
+          <TextBlock Text="v0.5.2 · KakaoRelay" Foreground="{StaticResource Muted}" FontSize="10" Margin="0,24,0,0"/>
         </StackPanel>
       </ScrollViewer>
     </TabItem>

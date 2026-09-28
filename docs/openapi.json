@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "KakaoRelay Local Gateway",
-    "version": "0.5.0",
+    "version": "0.5.2",
     "description": "앱과 같은 프로세스의 로컬 API. %LOCALAPPDATA%/KakaoRelay/connection.json에서 baseUrl과 token을 읽습니다. 글자 수 제한 없음. 같은 작업은 동일 requestId 사용. 최근 메시지 읽기는 현재 미지원."
   },
   "security": [

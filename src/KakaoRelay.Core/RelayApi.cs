@@ -111,7 +111,7 @@ public sealed class RelayApi : IAsyncDisposable
             catch
             { context.Response.StatusCode = 500; await context.Response.WriteAsJsonAsync(new { code = "unknown_result", detail = "같은 requestId로 결과를 조회하세요. 새 ID로 자동 재전송하지 마세요." }); }
         });
-        app.MapGet("/v1/health", () => Results.Json(new { status = "ready", version = "0.5", application = "KakaoRelay" }));
+        app.MapGet("/v1/health", () => Results.Json(new { status = "ready", version = "0.5.2", application = "KakaoRelay" }));
         app.MapGet("/v1/capabilities", () => Results.Json(new
         {
             send = true, idempotency = "requestId", requiresOpenRoom = true, maxMessageCharacters = (int?)null,
@@ -138,7 +138,7 @@ public sealed class RelayApi : IAsyncDisposable
         try
         {
             await app.StartAsync();
-            var connection = new ApiConnection(app.Urls.Single(), token, Environment.ProcessId, "0.5");
+            var connection = new ApiConnection(app.Urls.Single(), token, Environment.ProcessId, "0.5.2");
             Directory.CreateDirectory(Path.GetDirectoryName(discoveryPath)!);
             var temporary = discoveryPath + ".tmp";
             await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(connection, ReportStore.JsonOptions));

@@ -13,13 +13,18 @@ internal sealed class TrayHost : IDisposable
     {
         using var stream = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/Assets/KakaoRelay.ico")).Stream;
         image = new Icon(stream, 32, 32);
-        menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("KakaoRelay 열기", null, (_, _) => show());
+        // Queue WPF actions after the native tray menu has finished its click handling.
+        var dispatcher = System.Windows.Application.Current.Dispatcher;
+        void Open() => dispatcher.BeginInvoke(show);
+        void Exit() => dispatcher.BeginInvoke(exit);
+        menu = new Forms.ContextMenuStrip { ShowImageMargin = false };
+        menu.Items.Add("열기", null, (_, _) => Open());
         menu.Items.Add(new Forms.ToolStripSeparator());
-        exitItem = new Forms.ToolStripMenuItem("완전 종료", null, (_, _) => exit());
+        exitItem = new Forms.ToolStripMenuItem("완전 종료", null, (_, _) => Exit());
         menu.Items.Add(exitItem);
         icon = new Forms.NotifyIcon { Icon = image, Text = "KakaoRelay · 실행 중", ContextMenuStrip = menu, Visible = true };
-        icon.MouseClick += (_, e) => { if (e.Button == Forms.MouseButtons.Left) show(); };
+        // NotifyIcon handles right-click and keyboard context-menu requests, even while WPF is hidden.
+        icon.MouseClick += (_, e) => { if (e.Button == Forms.MouseButtons.Left) Open(); };
     }
     public void SetExiting()
     {

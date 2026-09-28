@@ -8,7 +8,7 @@
     <ApplicationIcon>Assets/KakaoRelay.ico</ApplicationIcon>
     <AssemblyName>KakaoRelay</AssemblyName>
     <Product>KakaoRelay</Product>
-    <Version>0.5.0</Version>
+    <Version>0.5.2</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../KakaoRelay.Core/KakaoRelay.Core.csproj" /></ItemGroup>
@@ -18,6 +18,8 @@
     <Resource Include="Assets/KakaoRelay.ico" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="../../docs/API.md" LogicalName="KakaoRelay.Docs.API.md" />
+    <EmbeddedResource Include="../../docs/openapi.json" LogicalName="KakaoRelay.Docs.openapi.json" />
     <None Include="../../docs/API.md" Link="docs/API.md" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../docs/openapi.json" Link="docs/openapi.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../docs/LOCAL-DATA.md" Link="docs/LOCAL-DATA.md" CopyToOutputDirectory="PreserveNewest" />
