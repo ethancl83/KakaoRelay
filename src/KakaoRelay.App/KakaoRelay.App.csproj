@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- WPF owns DPI awareness through app.manifest; WinForms is only the tray adapter. -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
+    <ApplicationIcon>Assets/KakaoRelay.ico</ApplicationIcon>
+    <AssemblyName>KakaoRelay</AssemblyName>
+    <Product>KakaoRelay</Product>
+    <Version>0.5.0</Version>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup><ProjectReference Include="../KakaoRelay.Core/KakaoRelay.Core.csproj" /></ItemGroup>
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+    <Resource Include="Assets/KakaoRelay.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="../../docs/API.md" Link="docs/API.md" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../docs/openapi.json" Link="docs/openapi.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../docs/LOCAL-DATA.md" Link="docs/LOCAL-DATA.md" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

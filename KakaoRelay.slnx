@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/KakaoRelay.Core/KakaoRelay.Core.csproj" />
+    <Project Path="src/KakaoRelay.App/KakaoRelay.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/KakaoRelay.Tests/KakaoRelay.Tests.csproj" />
+  </Folder>
+</Solution>
