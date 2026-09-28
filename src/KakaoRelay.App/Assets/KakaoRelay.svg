@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <title>KakaoRelay</title>
+  <path fill="#087E83" d="M18 2 H46 Q62 2 62 18 V46 Q62 62 46 62 H18 Q2 62 2 46 V18 Q2 2 18 2 Z"/>
+  <path fill="#FFFFFF" d="M22 14 H42 Q52 14 52 24 V34 Q52 44 42 44 H29 L18 51 V43 Q12 40 12 34 V24 Q12 14 22 14 Z"/>
+  <path fill="none" stroke="#087E83" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" d="M22 29 H42 M34 21 L42 29 L34 37"/>
+</svg>

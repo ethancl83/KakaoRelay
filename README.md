@@ -101,7 +101,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Build.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Diagnose.ps1
 ```
 
-아이콘 원본은 `src/KakaoRelay.App/Assets/KakaoRelay.png`이며,
+아이콘 원본은 `src/KakaoRelay.App/Assets/KakaoRelay.svg`이며,
 `scripts/Build-Icon.ps1`로 16~256px ICO를 다시 만들 수 있습니다.
 
 ```text
