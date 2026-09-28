@@ -97,6 +97,7 @@ public partial class App : Application
         if (exiting || MainWindow is not { } main) return;
         main.Show();
         if (main.WindowState == WindowState.Minimized) main.WindowState = WindowState.Normal;
+        if (main is MainWindow relayWindow) relayWindow.RestoreFixedSize();
         main.Activate();
     }
     private async Task ExitFromTrayAsync(MainWindow main)

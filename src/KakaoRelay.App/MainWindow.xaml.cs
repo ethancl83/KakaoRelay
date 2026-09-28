@@ -69,6 +69,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         InitializeComponent(); DataContext = this;
         Title = "KakaoRelay v0.7.4";
+        Loaded += (_, _) => RestoreFixedSize();
+        DpiChanged += (_, _) => Dispatcher.BeginInvoke(RestoreFixedSize);
         Loaded += async (_, _) => { LoadHistory(); await RefreshRoomsAsync(); };
         ChatbotPanel.ComposeRequested += async (room, text) =>
         {
@@ -79,6 +81,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             if (matches.Count != 1) { SetApiStatus("AI 답변을 받을 카카오톡 방을 열고 다시 가져오세요."); return; }
             MessageBody = text; SelectedConversation = matches[0]; MainTabs.SelectedIndex = 1;
         };
+    }
+    internal void RestoreFixedSize()
+    {
+        // Keep the requested logical size after native DPI/restore size suggestions.
+        if (WindowState != WindowState.Normal) return;
+        Width = MinWidth;
+        Height = MinHeight;
     }
     public void InitializeAi(AiService ai, Func<ApiSendCommand, Task<TestSendReceipt>> send) => ChatbotPanel.Initialize(ai, send);
     private void Refresh([CallerMemberName] string? property = null) => PropertyChanged?.Invoke(this, new(property));
