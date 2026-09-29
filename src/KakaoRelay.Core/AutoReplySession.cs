@@ -29,8 +29,34 @@ public sealed class AutoReplySession(AiService ai, Func<ApiSendCommand, Task<Tes
             throw new InvalidOperationException("자동 답변 길이가 유효하지 않아 중지했습니다.");
         var identity = Identity(room, candidate);
         var day = dailyReplies.Today;
-        var sendImage = result.ImagePath is not null || (result.Attachment is not null
-            && (result.Emotion != "neutral" || dailyReplies.IsFirstReply(room, day, identity)));
+        if (result.ImageError is null && (result.ImagePrompt is not null || result.ImagePath is not null))
+        {
+            StatusChanged?.Invoke($"{room.Title} · 그림 설명 먼저 전송 중");
+            var introduction = await send(new("bot-" + identity, room.Title, result.Text));
+            if (!introduction.EnterPosted || introduction.InputCleared != true)
+                throw new InvalidOperationException("그림 설명 발송 결과가 불확실해 이미지 생성을 시작하지 않고 중지했습니다.");
+            dailyReplies.RecordSent(room, day, identity);
+            cancellation.ThrowIfCancellationRequested();
+            var generated = await ai.GenerateImageAsync(result, cancellation,
+                new SessionProgress(s => StatusChanged?.Invoke($"{room.Title} · {s}")));
+            cancellation.ThrowIfCancellationRequested();
+            if (generated.ImageError is not null)
+            {
+                StatusChanged?.Invoke($"{room.Title} · 이미지 생성 실패 안내 전송 중");
+                var failure = await send(new("bot-image-error-" + identity, room.Title, generated.Text));
+                if (!failure.EnterPosted || failure.InputCleared != true)
+                    throw new InvalidOperationException("이미지 생성 실패 안내의 발송 결과 확인이 필요해 중지했습니다.");
+                return;
+            }
+            if (generated.ImagePath is null) throw new InvalidOperationException("생성 이미지 경로가 없습니다.");
+            StatusChanged?.Invoke($"{room.Title} · 생성 이미지 전송 중");
+            var generatedReceipt = await send(new("bot-image-" + identity, room.Title, "") { ImagePath = generated.ImagePath });
+            if (!generatedReceipt.EnterPosted || generatedReceipt.InputCleared != true)
+                throw new InvalidOperationException("생성 이미지 발송 결과 확인이 필요해 자동 답장을 중지했습니다.");
+            return;
+        }
+        var sendImage = result.Attachment is not null
+            && (result.Emotion != "neutral" || dailyReplies.IsFirstReply(room, day, identity));
         if (sendImage)
         {
             StatusChanged?.Invoke($"{room.Title} · {(result.ImagePath is not null ? "생성한" : PersonaExpression.Find(result.Emotion).Name)} 이미지 먼저 전송 중");
@@ -82,7 +108,7 @@ public sealed class AutoReplySession(AiService ai, Func<ApiSendCommand, Task<Tes
             {
             // Consume the trigger before generation; failures are not retried as new sends.
             StatusChanged?.Invoke($"{room.Title} 답변 생성 중 · 이번 묶음 {pending.Count}개 호출");
-            var result = await ai.GenerateAsync(new(room.Profile, room.Id, "reply", $"메시지 ID {candidate.Id}에만 답하라. 다른 호출은 별도로 처리된다. 호출 내용: {PromptJson.Serialize(candidate.Text)}") { TargetMessageId = candidate.Id }, cancellation, new SessionProgress(s => StatusChanged?.Invoke($"{room.Title} · {s}")));
+            var result = await ai.GenerateAsync(new(room.Profile, room.Id, "reply", $"메시지 ID {candidate.Id}에만 답하라. 다른 호출은 별도로 처리된다. 호출 내용: {PromptJson.Serialize(candidate.Text)}") { TargetMessageId = candidate.Id }, cancellation, new SessionProgress(s => StatusChanged?.Invoke($"{room.Title} · {s}")), deferImages: true);
             await SendReplyAsync(room, candidate, result, cancellation);
             StatusChanged?.Invoke($"{room.Title} · {result.Provider} 답변 전송 요청 처리 · 다음 호출 대기");
 

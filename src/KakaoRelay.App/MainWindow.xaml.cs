@@ -71,7 +71,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public MainWindow()
     {
         InitializeComponent(); DataContext = this;
-        Title = "KakaoRelay v0.7.5";
+        Title = "KakaoRelay v0.7.6";
         Loaded += (_, _) => RestoreFixedSize();
         DpiChanged += (_, _) => Dispatcher.BeginInvoke(RestoreFixedSize);
         Loaded += async (_, _) => { LoadHistory(); await RefreshRoomsAsync(); };

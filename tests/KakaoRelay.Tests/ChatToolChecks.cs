@@ -6,7 +6,7 @@ internal static class ChatToolChecks
     private const string Directive = "[[generate_image:\"달 위의 한복 고양이\"]]";
     private sealed class Runner : IAiRunner
     {
-        public string Reply = "요청한 그림이에요.\n" + Directive + "\n[[emotion:happy]]";
+        public string Reply = "달 위의 한복 고양이를 수채화로 그려볼게요.\n" + Directive + "\n[[emotion:happy]]";
         public string Prompt = "";
         public Task<string> RunAsync(AiProviderSettings provider, string prompt, int timeoutSeconds, CancellationToken cancellation)
         { Prompt = prompt; return Task.FromResult(Reply); }
@@ -16,8 +16,9 @@ internal static class ChatToolChecks
         public int Calls;
         public string Prompt = "";
         public bool Fail;
-        public Task<string> GenerateAsync(AiSettings settings, string replyProvider, string prompt, CancellationToken cancellation, IProgress<string>? progress)
-        { Calls++; Prompt = prompt; if (Fail) throw new InvalidDataException("fixture failure"); return Task.FromResult(Path.GetFullPath("generated.png")); }
+        public Func<Task>? BeforeGenerate;
+        public async Task<string> GenerateAsync(AiSettings settings, string replyProvider, string prompt, CancellationToken cancellation, IProgress<string>? progress)
+        { Calls++; Prompt = prompt; if (BeforeGenerate is not null) await BeforeGenerate(); if (Fail) throw new InvalidDataException("fixture failure"); return Path.GetFullPath("generated.png"); }
     }
     private sealed class ImageCli : IImageCliRunner
     {
@@ -70,8 +71,50 @@ internal static class ChatToolChecks
         await session.SendReplyAsync(room, candidate, ordinary, default);
         sent.Clear();
         await session.SendReplyAsync(room, candidate with { Id = "902" }, result with { ImagePath = imagePath }, default);
-        check(sent.Count == 2 && sent[0].ImagePath == imagePath && sent[0].Attachment is null && sent[1].Message == result.Text,
-            "Requested generated image precedes text even after today's first reply and without persona images enabled");
+        check(sent.Count == 2 && sent[0].Message == result.Text && sent[1].ImagePath == imagePath && sent[1].Attachment is null,
+            "Requested image follows the explanation even after today's first reply and without persona images enabled");
+        images.Fail = false;
+        var beforePlan = images.Calls;
+        runner.Reply = "달 위의 한복 고양이를 수채화로 그려볼게요.\n" + Directive + "\n[[emotion:neutral]]";
+        var plan = await service.GenerateAsync(new(room.Profile, room.Id, "reply"), deferImages: true);
+        check(images.Calls == beforePlan && plan.ImagePath is null && plan.ImagePrompt == "달 위의 한복 고양이" && plan.Text.Contains("그려볼게요"),
+            "Automatic reply preparation returns the drawing plan without starting image generation");
+        var introDone = new TaskCompletionSource<TestSendReceipt>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var imageStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var imageDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        images.BeforeGenerate = () => { imageStarted.SetResult(); return imageDone.Task; };
+        sent.Clear();
+        var staged = new AutoReplySession(service, c =>
+        {
+            sent.Add(c);
+            return c.IsImage ? Task.FromResult(new TestSendReceipt { EnterPosted = true, InputCleared = true }) : introDone.Task;
+        }, new(Path.Combine(root, "staged-image-days")));
+        var sending = staged.SendReplyAsync(room, candidate with { Id = "903" }, plan, default);
+        check(sent.Count == 1 && sent[0].Message == plan.Text && images.Calls == beforePlan && !sending.IsCompleted,
+            "Only the drawing explanation is sent while its delivery receipt is pending");
+        introDone.SetResult(new TestSendReceipt { EnterPosted = true, InputCleared = true });
+        await imageStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        check(sent.Count == 1 && images.Calls == beforePlan + 1 && !sending.IsCompleted,
+            "Image generation starts only after explanation delivery and sends nothing while generating");
+        imageDone.SetResult(); await sending;
+        check(sent.Count == 2 && sent[1].IsImage && sent[1].ImagePath is not null,
+            "Completed drawing sends only the image, without repeating the explanation");
+        images.BeforeGenerate = null;
+        var beforeFailure = images.Calls;
+        var uncertain = new AutoReplySession(service, _ => Task.FromResult(new TestSendReceipt { EnterPosted = true, InputCleared = false }));
+        try { await uncertain.SendReplyAsync(room, candidate, plan, default); check(false, "Uncertain introduction"); }
+        catch (InvalidOperationException) { check(images.Calls == beforeFailure, "Uncertain explanation delivery prevents image generation"); }
+        using (var cancel = new CancellationTokenSource())
+        {
+            var cancelled = new AutoReplySession(service, _ => { cancel.Cancel(); return Task.FromResult(new TestSendReceipt { EnterPosted = true, InputCleared = true }); }, new(Path.Combine(root, "cancel-image-days")));
+            try { await cancelled.SendReplyAsync(room, candidate, plan, cancel.Token); check(false, "Cancelled image"); }
+            catch (OperationCanceledException) { check(images.Calls == beforeFailure, "Stop after the explanation prevents image generation"); }
+        }
+        images.Fail = true; sent.Clear();
+        await session.SendReplyAsync(room, candidate with { Id = "904" }, plan, default);
+        check(sent.Count == 2 && sent.All(c => !c.IsImage) && sent[0].Message == plan.Text
+            && sent[1].Message.Contains("생성하지 못") && sent[1].RequestId.StartsWith("bot-image-error-"),
+            "Generation failure follows the explanation with a distinct failure notice and no image");
         foreach (var provider in new[] { "codex", "grok", "claude" })
         {
             var args = CliAiRunner.Arguments(new() { Id = provider }, root);

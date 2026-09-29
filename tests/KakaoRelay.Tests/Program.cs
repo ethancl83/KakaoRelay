@@ -117,6 +117,7 @@ try
     WorkspaceChecks.Run(root, Check);
     await ApiChecks.RunAsync(root, Check);
     await AiChecks.RunAsync(root, Check);
+    await InstructionChecks.RunAsync(root, Check);
     await ChatToolChecks.RunAsync(root, Check);
     await PersonaChecks.RunAsync(root, Check);
     await KnowledgeChecks.RunAsync(root, Check);

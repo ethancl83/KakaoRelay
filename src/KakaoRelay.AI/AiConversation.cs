@@ -6,6 +6,10 @@ public sealed class AiConversation
 {
     public string? SessionId { get; set; }
     public string? KnowledgeRevision { get; set; }
+    public DateOnly? InstructionsDate { get; set; }
+    public string? InstructionsRevision { get; set; }
+    public bool NeedsInstructions(DateOnly day, string revision) => string.IsNullOrWhiteSpace(SessionId)
+        || InstructionsDate != day || InstructionsRevision != revision;
     public HashSet<string> Seen { get; set; } = [];
     public static string Root => ProviderStorage.Root;
     public static string Fingerprint(LocalMessage message) => Hash(JsonSerializer.Serialize(message));

@@ -1,4 +1,4 @@
-# KakaoRelay Gateway API · v1 (앱 v0.7.5)
+# KakaoRelay Gateway API · v1 (앱 v0.7.6)
 
 ## 이미지 전송 · POST /v1/send-image
 
@@ -175,7 +175,7 @@ v0.6 Windows 앱은 `capabilities.recentMessages.supported=true`를 반환합니
 | GET /v1/ai/providers | 설치된 CLI 경로·상태. 로그인 성공을 뜻하지 않음 |
 | POST /v1/ai/generate | 분석·답변·질문 응답. 카카오톡에 전송하지 않음 |
 
-웹검색을 사용할 수 있으며 검색한 답변에는 출처 URL을 포함하도록 안내합니다. Windows에서 `reply`/`chat` 요청이 새 이미지 생성을 요구하면 결과에 검증된 `imagePath`가 반환됩니다. 해당 경로를 `POST /v1/send-image`로 보내고 발송 결과를 확인한 다음 `text`를 보내세요. `imageError`가 있으면 생성 실패이며 `text`도 실패 안내로 대체됩니다. 자동답장은 이 순서를 앱이 처리합니다. `targetMessageId`를 지정하면 그 메시지를 현재 답변 대상으로 안내합니다.
+웹검색을 사용할 수 있으며 검색한 답변에는 출처 URL을 포함하도록 안내합니다. Windows에서 `reply`/`chat` 요청이 새 이미지 생성을 요구하면 생성 완료 후 검증된 `imagePath`와 그림 설명 `imagePrompt`가 반환됩니다. 해당 경로를 `POST /v1/send-image`로 보낼 수 있습니다. `imageError`가 있으면 생성 실패이며 `text`도 실패 안내로 대체됩니다. 자동답장은 별도로 설명 텍스트를 먼저 발송하고, 전송 결과가 확인된 뒤 CLI 이미지를 생성하여 보냅니다. `targetMessageId`를 지정하면 그 메시지를 현재 답변 대상으로 안내합니다.
 
 ```json
 {"profile":"방 목록에서 받은 profile","roomId":"방 목록에서 받은 id","mode":"analyze","instruction":"결정된 내용과 할 일을 정리해줘"}

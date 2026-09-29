@@ -8,7 +8,7 @@
     <ApplicationIcon>Assets/KakaoRelay.ico</ApplicationIcon>
     <AssemblyName>KakaoRelay</AssemblyName>
     <Product>KakaoRelay</Product>
-    <Version>0.7.5</Version>
+    <Version>0.7.6</Version>
     <SatelliteResourceLanguages>ko</SatelliteResourceLanguages>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>

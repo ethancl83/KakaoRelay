@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "KakaoRelay Local Gateway",
-    "version": "0.7.5",
+    "version": "0.7.6",
     "description": "인증된 로컬 Windows 게이트웨이. 메시지 전송, SQLCipher 4 로컬 대화 읽기, CLI AI 분석·페르소나 설정."
   },
   "security": [
@@ -1267,6 +1267,10 @@
           "imageError": {
             "type": ["string", "null"],
             "description": "이미지 생성 실패 진단. 실패 시 imagePath는 null이며 text는 실패 안내입니다."
+          },
+          "imagePrompt": {
+            "type": ["string", "null"],
+            "description": "CLI 이미지 생성에 전달할 시각적 설명. 자동답장은 text를 먼저 발송한 뒤 생성합니다."
           },
           "knowledgeSources": {
             "type": "array",
