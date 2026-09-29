@@ -16,7 +16,7 @@ public sealed class PersonaImageCliGenerator(AiProviderSettings provider, Func<b
     public async Task<byte[]> GenerateAsync(string prompt, byte[]? referencePng, CancellationToken cancellation)
     {
         if (provider.Id is not ("codex" or "grok")) throw new ArgumentException("이미지 생성은 Codex 또는 Grok CLI를 선택하세요.");
-        var folder = Path.Combine(Path.GetTempPath(), "KakaoRelay-Images", Guid.NewGuid().ToString("N"));
+        var folder = ProviderStorage.JobFolder(provider.Id, "image");
         Directory.CreateDirectory(folder);
         var started = DateTime.UtcNow;
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
@@ -32,6 +32,11 @@ public sealed class PersonaImageCliGenerator(AiProviderSettings provider, Func<b
             var task = BuildPrompt(provider.Id, prompt, reference);
             var result = await (runner ?? new NativeImageCliRunner()).RunAsync(provider, folder, task, reference, timeout.Token);
             using var json = JsonDocument.Parse(result);
+            if (json.RootElement.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.String)
+            {
+                var detail = error.GetString() ?? "";
+                throw new InvalidDataException("이미지 CLI: " + detail[..Math.Min(detail.Length, 1000)]);
+            }
             if (!json.RootElement.TryGetProperty("image_path", out var field) || field.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(field.GetString()))
                 throw new InvalidDataException("CLI가 이미지 파일을 반환하지 않았습니다. CLI 로그인과 이미지 도구 지원을 확인하세요.");
             var path = ValidateOutput(field.GetString()!, folder, reference, started);
@@ -56,9 +61,8 @@ public sealed class PersonaImageCliGenerator(AiProviderSettings provider, Func<b
     {
         if (!Path.IsPathFullyQualified(value)) throw new InvalidDataException("CLI 이미지 경로가 절대 경로가 아닙니다.");
         var path = Path.GetFullPath(value);
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var codex = Environment.GetEnvironmentVariable("CODEX_HOME") ?? Path.Combine(home, ".codex");
-        var grok = Environment.GetEnvironmentVariable("GROK_HOME") ?? Path.Combine(home, ".grok");
+        var codex = ProviderStorage.Home("codex");
+        var grok = ProviderStorage.Home("grok");
         var roots = new[] { folder, Path.Combine(codex, "generated_images"), Path.Combine(grok, "sessions") };
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         if (!roots.Any(root => path.StartsWith(Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, comparison))
@@ -94,6 +98,10 @@ public sealed class NativeImageCliRunner : IImageCliRunner
         var info = new ProcessStartInfo(exe) { WorkingDirectory = folder, UseShellExecute = false, CreateNoWindow = true,
             RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true,
             StandardInputEncoding = new UTF8Encoding(false), StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8 };
+        // Grok embeds the encoded cwd in its image output path. Nesting the job folder
+        // there exceeds MAX_PATH on Windows; prompts/references already use absolute paths.
+        if (provider.Id == "grok" && OperatingSystem.IsWindows()) info.WorkingDirectory = AppContext.BaseDirectory;
+        ProviderStorage.Configure(info, provider.Id);
         foreach (var arg in Arguments(provider, folder, reference)) info.ArgumentList.Add(arg);
         foreach (var key in new[] { "OPENAI_API_KEY", "XAI_API_KEY", "GROK_API_KEY", "CLAUDECODE", "CODEX_THREAD_ID", "CODEX_INTERNAL_ORIGINATOR_OVERRIDE" }) info.Environment.Remove(key);
         return info;

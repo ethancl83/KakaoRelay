@@ -9,17 +9,21 @@ namespace KakaoRelay.App;
 public partial class AiPanel : UserControl, INotifyPropertyChanged
 {
     private AiService? service;
-    private Func<ApiSendCommand, Task<TestSendReceipt>>? send;
+    private Func<ApiSendCommand, CancellationToken, Task<TestSendReceipt>>? send;
     private CancellationTokenSource? operation;
     private LocalRoom? selectedRoom, answerRoom;
     private string answer = "";
+    private LocalRoom? summaryRoom;
+    private string? summaryPersonaId;
+    public string KnowledgeQuery { get; set; } = "";
+    public string KnowledgePreview { get; private set; } = "검색은 로컬에서만 실행하며 AI에 전송하지 않습니다.";
+    public bool CanSaveKnowledgeNote => Idle && summaryRoom is not null && summaryPersonaId is not null && !string.IsNullOrWhiteSpace(Answer);
     private bool settingsLoaded, restoringRooms;
     private readonly System.Windows.Threading.DispatcherTimer saveTimer = new() { Interval = TimeSpan.FromMilliseconds(700) };
     private bool generating;
     public Visibility AnswerWaitingVisibility => generating ? Visibility.Visible : Visibility.Collapsed;
     private CancellationTokenSource? bots;
     private int activeBots;
-    private readonly SemaphoreSlim botSendGate = new(1);
     public ObservableCollection<string> BotStatuses { get; } = [];
     public bool BotsRunning => bots is not null;
     public bool CanStartBots => service is not null && !BotsRunning && Idle;
@@ -34,7 +38,7 @@ public partial class AiPanel : UserControl, INotifyPropertyChanged
     public event Action<LocalRoom, string>? ComposeRequested;
     public AiSettings Settings { get; private set; } = new();
     private PersonaProfile? editingProfile;
-    public PersonaProfile? EditingProfile { get => editingProfile; set { if (value is null || PersonaImages.Busy) return; editingProfile = value; PersonaImages.SwitchPersona(); Changed(); } }
+    public PersonaProfile? EditingProfile { get => editingProfile; set { if (value is null || PersonaImages.Busy) return; editingProfile = value; KnowledgePreview = "검색은 로컬에서만 실행하며 AI에 전송하지 않습니다."; PersonaImages.SwitchPersona(); Changed(); } }
     public PersonaProfile? RoomProfile { get; set; }
     public string RoomReplyMode { get; set; } = "trigger";
     private readonly List<LocalRoom> botSelectionOrder = [];
@@ -87,7 +91,7 @@ public partial class AiPanel : UserControl, INotifyPropertyChanged
         };
     }
     private void QueueSave() { if (!settingsLoaded || restoringRooms) return; saveTimer.Stop(); saveTimer.Start(); }
-    public void Initialize(AiService ai, Func<ApiSendCommand, Task<TestSendReceipt>> sender)
+    public void Initialize(AiService ai, Func<ApiSendCommand, CancellationToken, Task<TestSendReceipt>> sender)
     {
         service = ai; send = sender;
         try { Settings = ai.Settings.Load(); settingsLoaded = true; Status = "준비"; }
@@ -106,7 +110,51 @@ public partial class AiPanel : UserControl, INotifyPropertyChanged
         try { service!.Settings.Save(Settings); return true; }
         catch (Exception e) { Status = e.Message; Changed(); return false; }
     }
-    private void Save_Click(object sender, RoutedEventArgs e) { if (Idle && Save()) { Status = "페르소나와 프로바이더 설정을 저장했습니다."; Changed(); } }
+    private void Save_Click(object sender, RoutedEventArgs e) { if (Idle && Save()) { Status = "페르소나·프로바이더·지식베이스 설정을 저장했습니다."; Changed(); } }
+    private void KnowledgeFolder_Click(object sender, RoutedEventArgs e)
+    {
+        if (!Idle || EditingProfile is null) return;
+        var dialog = new Microsoft.Win32.OpenFolderDialog { Title = "봇이 참고할 옵시디언 보관함 또는 하위 폴더 선택" };
+        if (dialog.ShowDialog() != true) return;
+        EditingProfile.Knowledge.VaultPath = dialog.FolderName;
+        Save(); Changed();
+    }
+    private void KnowledgeOpen_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var path = EditingProfile?.Knowledge.VaultPath;
+            if (string.IsNullOrWhiteSpace(path) || !System.IO.Directory.Exists(path)) throw new InvalidOperationException("먼저 보관함 폴더를 선택하세요.");
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(System.IO.Path.GetFullPath(path)) { UseShellExecute = true });
+        }
+        catch (Exception error) { Status = error.Message; Changed(); }
+    }
+    private async void KnowledgeSearch_Click(object sender, RoutedEventArgs e)
+    {
+        if (!Idle || EditingProfile is null || !Save()) return;
+        var settings = new KnowledgeSettings { Enabled = true, VaultPath = EditingProfile.Knowledge.VaultPath };
+        var query = KnowledgeQuery;
+        await Work(async ct =>
+        {
+            var result = await ObsidianKnowledge.SearchAsync(settings, query, ct);
+            KnowledgePreview = result.Excerpts.Count == 0 ? "관련 노트를 찾지 못했습니다. 노트에 있는 주제어나 제목으로 검색하세요."
+                : string.Join("\n\n", result.Excerpts.Select(x => $"[노트: {x.Source}] · 발췌 {x.Part}\n{x.Text}"));
+            Status = $"노트 {result.Notes}개 · 관련 발췌 {result.Excerpts.Count}개 · 건너뜀 {result.Skipped}개{(result.Limited ? " · 검색 한도 도달: 더 작은 폴더를 선택하세요." : "")}";
+        });
+    }
+    private async void SaveKnowledgeNote_Click(object sender, RoutedEventArgs e)
+    {
+        if (!CanSaveKnowledgeNote || !Save()) return;
+        var room = summaryRoom!;
+        var knowledge = Settings.Personas.Single(p => p.Id == summaryPersonaId).Knowledge;
+        var body = Answer;
+        await Work(async ct =>
+        {
+            var path = await ObsidianKnowledge.SaveNoteAsync(knowledge, room.Title + " 대화 요약", body, room, ct);
+            Status = "요약 노트 저장: " + path;
+            summaryRoom = null; summaryPersonaId = null;
+        });
+    }
     private void BindPersona_Click(object sender, RoutedEventArgs e)
     {
         if (!CanBindBot || RoomProfile is null || BotBindingRoom is not { } room || !BotRooms.SelectedItems.Contains(room)) return;
@@ -130,7 +178,13 @@ public partial class AiPanel : UserControl, INotifyPropertyChanged
     private async void Rooms_Click(object sender, RoutedEventArgs e) => await Work(async ct =>
     {
         Status = "카카오톡 로컬 대화방 확인 중"; Changed();
-        var list = await service!.Chats.RoomsAsync(ct); var previous = SelectedRoom;
+        var list = await service!.Chats.RoomsAsync(ct);
+        ApplyRooms(list);
+        Status = $"{list.Count}개 방 · 키 확인 {list.Count(r => r.Readable)}개. 읽을 수 없는 방은 카카오톡에서 열어주세요.";
+    });
+    private void ApplyRooms(List<LocalRoom> list)
+    {
+        var previous = SelectedRoom;
         restoringRooms = true;
         try
         {
@@ -147,8 +201,7 @@ public partial class AiPanel : UserControl, INotifyPropertyChanged
             UpdateBotBindingRoom();
         }
         finally { restoringRooms = false; }
-        Status = $"{list.Count}개 방 · 키 확인 {list.Count(r => r.Readable)}개. 읽을 수 없는 방은 카카오톡에서 열어주세요.";
-    });
+    }
     private async void Read_Click(object sender, RoutedEventArgs e)
     {
         if (!CanRead || !Save()) return; var room = SelectedRoom!;
@@ -156,6 +209,7 @@ public partial class AiPanel : UserControl, INotifyPropertyChanged
         {
             Status = "로컬 대화 읽는 중"; Changed();
             var context = await service!.Chats.ReadAsync(room.Profile, room.Id, Settings.ContextMessages, ct);
+            ApplyRooms(Rooms.Select(r => r.Profile == room.Profile && r.Id == room.Id ? context.Room : r).ToList());
             Transcript = string.Join("\n\n", context.Messages.Select(m => $"{m.Time.ToOffset(TimeSpan.FromHours(9)):MM-dd HH:mm} · {m.Author} ({m.AuthorId})\n{(m.Deleted ? "[삭제된 메시지]" : m.Text)}"));
             ContextHint = $"{context.Messages.Count}개 메시지 · 한국 시간 · 첨부 미디어 제외";
             Status = "로컬 대화 읽기 완료 · 아직 AI에 전달하지 않았습니다.";
@@ -167,11 +221,16 @@ public partial class AiPanel : UserControl, INotifyPropertyChanged
         var room = SelectedRoom!; var mode = (string)((Button)sender).Tag;
         await Work(async ct =>
         {
-            generating = true; answerRoom = null; Answer = ""; Status = "대화 문맥으로 AI 응답 생성 중"; Changed();
+            generating = true; answerRoom = null; summaryRoom = null; summaryPersonaId = null; Answer = ""; Status = "대화 문맥으로 AI 응답 생성 중"; Changed();
             var progress = new Progress<string>(message => { if (operation?.Token == ct) { Status = message; Changed(); } });
             var result = await service!.GenerateAsync(new(room.Profile, room.Id, mode, Question), ct, progress);
+            ApplyRooms(Rooms.Select(r => r.Profile == room.Profile && r.Id == room.Id ? result.Room : r).ToList());
             Answer = result.Text; answerRoom = mode == "reply" ? result.Room : null;
+            summaryRoom = mode == "analyze" ? result.Room : null;
+            summaryPersonaId = mode == "analyze" ? result.PersonaId : null;
             Status = $"{result.Provider} · {result.Model} · effort {result.Effort} · {result.MessageCount}개 문맥 · " + string.Join(" → ", result.Attempts.Select(a => $"{a.Provider} {a.Status}"));
+            if (result.ImagePath is not null) Status += " · 생성 이미지 저장: " + result.ImagePath;
+            if (result.ImageError is not null) Status += " · 이미지 생성 실패: " + result.ImageError;
         });
     }
     private async void Export_Click(object sender, RoutedEventArgs e)
@@ -192,9 +251,19 @@ public partial class AiPanel : UserControl, INotifyPropertyChanged
         if (!CanStartBots || !Save() || send is null) return;
         var selected = BotRooms.SelectedItems.Cast<LocalRoom>().ToList();
         if (selected.Count is < 1 or > 3) { Status = "자동 답장할 방을 1~3개 선택하세요."; Changed(); return; }
-        if (selected.Any(r => !r.Readable || Rooms.Count(x => x.Title == r.Title) != 1)) { Status = "읽을 수 없거나 같은 제목이 여러 개인 방은 사용할 수 없습니다."; Changed(); return; }
         if (!System.Numerics.BigInteger.TryParse(SelfId.Trim(), out var self) || self <= 0) { Status = "내 사용자 ID를 입력하세요."; Changed(); return; }
         var selfId = SelfId.Trim(); var trigger = Trigger.Trim();
+        List<LocalRoom>? prepared = null;
+        await Work(async ct =>
+        {
+            Status = "자동답장 시작 전 · 선택한 방의 대화 읽기와 발송 창 확인 중"; Changed();
+            var result = await AutoReplyReadiness.PrepareAsync(service!.Chats, selected, ConversationCatalog.Scan, ct);
+            ct.ThrowIfCancellationRequested();
+            ApplyRooms(result.Rooms);
+            prepared = result.Selected;
+        });
+        if (prepared is null) return;
+        selected = prepared;
         using var cancellation = new CancellationTokenSource(); bots = cancellation; activeBots = selected.Count;
         Status = "자동 답장 시작 · 수동 분석도 사용할 수 있습니다.";
         BotStatuses.Clear(); foreach (var room in selected) BotStatuses.Add($"{room.Title} · 시작 준비 중"); Changed();
@@ -210,9 +279,8 @@ public partial class AiPanel : UserControl, INotifyPropertyChanged
             async Task<TestSendReceipt> SendQueued(ApiSendCommand command)
             {
                 SetStage($"{room.Title} · 전송 순서 대기");
-                await botSendGate.WaitAsync(ct);
-                try { ct.ThrowIfCancellationRequested(); return await send(command); }
-                finally { botSendGate.Release(); }
+                ct.ThrowIfCancellationRequested();
+                return await send(command, ct);
             }
             var session = new AutoReplySession(service!, SendQueued);
             session.StatusChanged += message => Dispatcher.Invoke(() => { SetStage(message); Changed(); });

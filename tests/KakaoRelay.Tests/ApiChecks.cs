@@ -10,8 +10,9 @@ internal static class ApiChecks
     private sealed class FakeImageTransport : IImageSendTransport
     {
         public int Attachments;
+        public Action? OnAttach;
         public void Validate(TestSendRequest target) { }
-        public void Attach(string path) { if (!File.Exists(path)) throw new Exception("Missing staged file"); Attachments++; }
+        public void Attach(string path) { if (!File.Exists(path)) throw new Exception("Missing staged file"); Attachments++; OnAttach?.Invoke(); }
         public bool ConfirmPreview() => true;
     }
     private sealed class FakeAiRunner : IAiRunner
@@ -21,15 +22,19 @@ internal static class ApiChecks
     private sealed class FakeTransport : ITestSendTransport
     {
         public int Posts;
+        public Action? BeforeWrite;
+        public Action<string>? OnPost;
         private string draft = "메시지 입력";
         public string ForegroundWindow => "0x1";
         public void ValidateTarget(TestSendRequest request) { }
         public string ReadDraft() => draft;
-        public void WriteDraft(string value) => draft = value;
-        public void PostEnter() { Posts++; draft = ""; }
+        public void WriteDraft(string value) { BeforeWrite?.Invoke(); draft = value; }
+        public void PostEnter() { Posts++; OnPost?.Invoke(draft); draft = ""; }
     }
     public static async Task RunAsync(string root, Action<bool, string> check)
     {
+        await CheckDelayedTextAsync(root, check);
+        await CheckQueueAsync(root, check);
         var ledger = Path.Combine(root, "api-ledger");
         var fake = new FakeTransport();
         var room = new ConversationTarget("시험방", 1, "0x1", false);
@@ -67,10 +72,14 @@ internal static class ApiChecks
             check(malformed.StatusCode == HttpStatusCode.BadRequest && fake.Posts == 0, "Malformed API JSON never dispatches");
             var invalid = await client.PostAsJsonAsync("/v1/send", new { requestId = "../bad", recipient = "시험방", message = "hi" });
             check(invalid.StatusCode == HttpStatusCode.BadRequest && fake.Posts == 0, "API validates IDs before filesystem or native access");
+            foreach (var delay in new[] { -1, 30001 })
+                check((await client.PostAsJsonAsync("/v1/send", new { requestId = "invalid-delay", recipient = "시험방", message = "hi", sendDelayMs = delay })).StatusCode == HttpStatusCode.BadRequest && fake.Posts == 0,
+                    "HTTP rejects invalid send delays before touching the editor");
             var command = new ApiSendCommand("long-message", "시험방", new string('가', 12000) + "\r\n끝");
             var response = await client.PostAsJsonAsync("/v1/send", command);
             var receipt = await response.Content.ReadFromJsonAsync<TestSendReceipt>();
             check(response.IsSuccessStatusCode && receipt?.EnterPosted == true && fake.Posts == 1, "API accepts long Korean messages and empty cue without a checkbox");
+            check(receipt?.SendDelayMs == 1000 && !receipt.InputResponseTimedOut, "API defaults to a one-second delay and records the effective delay");
             rooms.Clear();
             var replay = await client.PostAsJsonAsync("/v1/send", command);
             check(replay.IsSuccessStatusCode && fake.Posts == 1, "Duplicate API request returns stored result even after room closes");
@@ -113,5 +122,105 @@ internal static class ApiChecks
             aiSettings.Provider = "bogus";
             check((await client.PutAsJsonAsync("/v1/ai/settings", aiSettings)).StatusCode == HttpStatusCode.BadRequest, "Invalid provider cannot overwrite saved settings");
         }
+    }
+    private sealed class DelayedTransport : ITestSendTransport
+    {
+        public int Writes, Posts, EarlyReads;
+        public int? ConfiguredDelay;
+        public Exception? InputFailure;
+        public bool ChangeTarget;
+        public long WrittenAt;
+        public double ElapsedAtPost;
+        public string ForegroundWindow => "0x1";
+        public void ValidateTarget(TestSendRequest request)
+        {
+            ConfiguredDelay = request.SendDelayMs;
+            if (Writes > 0 && ChangeTarget) throw new InvalidOperationException("Target changed during delay");
+        }
+        public string ReadDraft()
+        {
+            if (Writes > 0 && Posts == 0) { EarlyReads++; throw new Exception("Inserted text must not be read before Enter"); }
+            return "";
+        }
+        public void WriteDraft(string text)
+        {
+            Writes++; WrittenAt = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (InputFailure is not null) throw InputFailure;
+        }
+        public void PostEnter() { Posts++; ElapsedAtPost = System.Diagnostics.Stopwatch.GetElapsedTime(WrittenAt).TotalMilliseconds; }
+    }
+    private static async Task CheckDelayedTextAsync(string root, Action<bool, string> check)
+    {
+        var ledger = Path.Combine(root, "delayed-api-ledger");
+        var fake = new DelayedTransport();
+        var service = new ApiSendService(ledger, () => [new("시험방", 1, "0x1", false)], () => fake);
+        var command = new ApiSendCommand("delayed-normal", "시험방", "fixture") { SendDelayMs = 70 };
+        var receipt = await service.SendAsync(command);
+        check(receipt.EnterPosted && fake.Posts == 1 && fake.EarlyReads == 0 && fake.ConfiguredDelay == 70 && fake.ElapsedAtPost >= 60,
+            "API text waits for its configured delay then posts once without reading inserted text");
+        await service.SendAsync(command with { SendDelayMs = 0 });
+        check(fake.Posts == 1 && fake.Writes == 1, "Changing only the delay never replays an existing request ID");
+        fake = new() { InputFailure = new TextInputTimeoutException(new System.ComponentModel.Win32Exception(1460)) };
+        var timeoutCommand = command with { RequestId = "delayed-timeout" };
+        receipt = await service.SendAsync(timeoutCommand);
+        await service.SendAsync(timeoutCommand);
+        check(receipt.EnterPosted && receipt.InputResponseTimedOut && fake.Posts == 1 && fake.Writes == 1 && fake.EarlyReads == 0 && fake.ElapsedAtPost >= 60,
+            "Text insertion timeout waits then posts once in the same request without retyping or read-back");
+        foreach (var failure in new Exception[] { new System.ComponentModel.Win32Exception(5), new TimeoutException("selection timeout"), new InvalidOperationException("editor closed") })
+        {
+            fake = new() { InputFailure = failure };
+            receipt = await service.SendAsync(command with { RequestId = Guid.NewGuid().ToString("N"), SendDelayMs = 0 });
+            check(!receipt.EnterPosted && !receipt.InputResponseTimedOut && fake.Posts == 0, "Access, selection timeout and editor failures still prevent Enter");
+        }
+        fake = new() { ChangeTarget = true };
+        receipt = await service.SendAsync(command with { RequestId = "delayed-target-change" });
+        check(!receipt.EnterPosted && fake.Posts == 0, "A target change during the delay prevents Enter");
+        fake = new();
+        receipt = await service.SendAsync(command with { RequestId = "delayed-zero", SendDelayMs = 0 });
+        check(receipt.EnterPosted && fake.ConfiguredDelay == 0 && fake.EarlyReads == 0, "An explicit zero delay keeps API read-back disabled");
+        fake = new() { InputFailure = new TextInputTimeoutException(new System.ComponentModel.Win32Exception(1460)) };
+        receipt = TestSender.SendOnce(new("manual-timeout", "fixture", "text", 1, "0x1", DateTimeOffset.Now.AddMinutes(5)), fake, ledger);
+        check(!receipt.EnterPosted && fake.Posts == 0, "Manual sends retain their previous stop-on-timeout behavior");
+    }
+    private static async Task CheckQueueAsync(string root, Action<bool, string> check)
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var release = new ManualResetEventSlim();
+        var order = new List<string>();
+        var fake = new FakeTransport
+        {
+            BeforeWrite = () => { entered.TrySetResult(); if (!release.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException(); },
+            OnPost = text => order.Add(text)
+        };
+        var image = new FakeImageTransport { OnAttach = () => order.Add("image") };
+        var service = new ApiSendService(Path.Combine(root, "queue-ledger"),
+            () => [new("시험방", 1, "0x1", false)], () => fake, () => image, Path.Combine(root, "queue-images"));
+        var imagePath = Path.Combine(root, "queue.png");
+        File.WriteAllBytes(imagePath, Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aG1sAAAAASUVORK5CYII="));
+        var command = new ApiSendCommand("queue-first", "시험방", "first");
+        var first = service.SendAsync(command);
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var duplicate = service.SendAsync(command);
+            var conflict = service.SendAsync(command with { Message = "changed" });
+            var attachment = service.SendAsync(new("queue-image", "시험방", "") { ImagePath = imagePath });
+            var missing = service.SendAsync(new("queue-missing", "닫힌방", "missing"));
+            var last = service.SendAsync(new("queue-last", "시험방", "last"));
+            check(new Task[] { first, duplicate, conflict, attachment, missing, last }.All(t => !t.IsCompleted),
+                "Concurrent sends wait for the active native send instead of returning busy");
+            release.Set();
+            await Task.WhenAll(first, duplicate, attachment, last).WaitAsync(TimeSpan.FromSeconds(10));
+            async Task<bool> HasFailure(Task task, string code)
+            {
+                try { await task; return false; }
+                catch (ApiFailure error) { return error.Code == code; }
+            }
+            check(await HasFailure(conflict, "request_id_conflict") && await HasFailure(missing, "room_unavailable"),
+                "Queued conflicts and unavailable rooms preserve their errors");
+            check(order.SequenceEqual(new[] { "first", "image", "last" }) && fake.Posts == 2 && image.Attachments == 1,
+                "Text and images share FIFO order, duplicate requests send once, and failures do not block later sends");
+        }
+        finally { release.Set(); await first; }
     }
 }

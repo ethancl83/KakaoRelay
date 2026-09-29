@@ -13,11 +13,13 @@ namespace KakaoRelay.Core;
 
 public sealed record ApiSendCommand(string RequestId, string Recipient, string Message)
 {
+    public int SendDelayMs { get; init; } = 1000;
     public PersonaAttachment? Attachment { get; init; }
     public string? ImagePath { get; init; }
     [System.Text.Json.Serialization.JsonIgnore] public bool IsImage => Attachment is not null || ImagePath is not null;
     public void Validate()
     {
+        if (SendDelayMs is < 0 or > 30000) throw new ApiFailure(400, "invalid_send_delay", "sendDelayMs는 0~30000 밀리초 정수입니다.");
         if (!ValidId(RequestId) || string.IsNullOrWhiteSpace(Recipient) || Message is null || (!IsImage && string.IsNullOrWhiteSpace(Message)) || Message.Contains('\0'))
             throw new ApiFailure(400, "invalid_request", "requestId, recipient, message를 확인하세요.");
         if (ImagePath is not null && (Attachment is not null || Message.Length != 0 || !Path.IsPathFullyQualified(ImagePath) || ImagePath.Contains('\0')))
@@ -47,13 +49,12 @@ public sealed record ApiImageCommand(string RequestId, string Recipient, string?
 // Binds an AI request ID to its content before touching KakaoTalk. Receipts survive room closure.
 public sealed class ApiSendService(string ledger, Func<List<ConversationTarget>> scan, Func<ITestSendTransport> transport, Func<IImageSendTransport>? imageTransport = null, string? imageTransferRoot = null)
 {
-    private readonly SemaphoreSlim gate = new(1);
+    private readonly AsyncWorkQueue queue = new();
     private sealed record Reservation(string Fingerprint, string EngineFingerprint);
-    public async Task<TestSendReceipt> SendAsync(ApiSendCommand command)
+    public Task<TestSendReceipt> SendAsync(ApiSendCommand command)
     {
         command.Validate();
-        if (!await gate.WaitAsync(0)) throw new ApiFailure(409, "busy", "동일 요청 ID로 결과를 확인하세요.");
-        try
+        return queue.Enqueue(async () =>
         {
             return await Task.Run(() =>
             {
@@ -78,7 +79,8 @@ public sealed class ApiSendService(string ledger, Func<List<ConversationTarget>>
                 var room = matches[0];
                 if (command.IsImage && imageTransport is null) throw new ApiFailure(409, "image_unavailable", "이미지 전송 어댑터가 없습니다.");
                 var imagePath = command.ImagePath is not null ? ImageSender.ValidateLocalImage(command.ImagePath) : command.Attachment is null ? null : ImageSender.ResolvePath(command.Attachment);
-                var request = new TestSendRequest(command.RequestId, room.Title, imagePath is null ? command.Message : ImageSender.FileIdentity(imagePath), room.ProcessId, room.Handle, DateTimeOffset.Now.AddMinutes(5), true);
+                var request = new TestSendRequest(command.RequestId, room.Title, imagePath is null ? command.Message : ImageSender.FileIdentity(imagePath), room.ProcessId, room.Handle, DateTimeOffset.Now.AddMinutes(5), true)
+                { SendDelayMs = imagePath is null ? command.SendDelayMs : null };
                 request.Validate();
                 using (var file = new FileStream(reservationPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))
                 {
@@ -87,8 +89,7 @@ public sealed class ApiSendService(string ledger, Func<List<ConversationTarget>>
                 }
                 return imagePath is null ? TestSender.SendOnce(request, transport(), ledger) : ImageSender.SendOnce(request, imagePath, imageTransport!(), ledger, imageTransferRoot);
             });
-        }
-        finally { gate.Release(); }
+        });
     }
 }
 
@@ -131,10 +132,11 @@ public sealed class RelayApi : IAsyncDisposable
             catch
             { context.Response.StatusCode = 500; await context.Response.WriteAsJsonAsync(new { code = "unknown_result", detail = "같은 requestId로 결과를 조회하세요. 새 ID로 자동 재전송하지 마세요." }); }
         });
-        app.MapGet("/v1/health", () => Results.Json(new { status = "ready", version = "0.7.4", application = "KakaoRelay" }));
+        app.MapGet("/v1/health", () => Results.Json(new { status = "ready", version = "0.7.5", application = "KakaoRelay" }));
         app.MapGet("/v1/capabilities", () => Results.Json(new
         {
             send = true, idempotency = "requestId", requiresOpenRoom = true, maxMessageCharacters = (int?)null,
+            textSend = new { defaultSendDelayMs = 1000, maxSendDelayMs = 30000, verifyInsertedText = false, continueAfterInputTimeout = true },
             imageSend = new { supported = true, endpoint = "/v1/send-image", transport = "WM_DROPFILES + HWND", computerUse = false },
             recentMessages = new { supported = ai is not null, reason = "SQLCipher 4 · 키가 메모리에 로드된 방 · DB/WAL 읽기 전용" },
             aiChat = ai is not null,
@@ -176,7 +178,7 @@ public sealed class RelayApi : IAsyncDisposable
         try
         {
             await app.StartAsync();
-            var connection = new ApiConnection(app.Urls.Single(), token, Environment.ProcessId, "0.7.4");
+            var connection = new ApiConnection(app.Urls.Single(), token, Environment.ProcessId, "0.7.5");
             Directory.CreateDirectory(Path.GetDirectoryName(discoveryPath)!);
             var temporary = discoveryPath + ".tmp";
             await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(connection, ReportStore.JsonOptions));

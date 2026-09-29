@@ -233,8 +233,8 @@ public sealed class PersonaImageCatalog(string root)
         PersonaExpression.Find(expression);
         var provider = AppliedProvider(); if (provider is null) return null;
         var library = Store(provider).Load();
-        var id = library.Active.GetValueOrDefault(expression) ?? library.ReferenceId;
-        return id is null ? null : new(personaId, provider, id);
+        var id = library.Active.GetValueOrDefault(expression) ?? (expression == "neutral" ? library.ReferenceId : null);
+        return id is null || !File.Exists(Store(provider).ImagePath(id)) ? null : new(personaId, provider, id);
     }
 }
 

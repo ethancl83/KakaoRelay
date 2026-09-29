@@ -4,8 +4,9 @@ using System.Text;
 
 namespace KakaoRelay.Core;
 
-public sealed class AutoReplySession(AiService ai, Func<ApiSendCommand, Task<TestSendReceipt>> send)
+public sealed class AutoReplySession(AiService ai, Func<ApiSendCommand, Task<TestSendReceipt>> send, DailyReplyHistory? history = null)
 {
+    private readonly DailyReplyHistory dailyReplies = history ?? new(DailyReplyHistory.DefaultRoot);
     public event Action<string>? StatusChanged;
     public static LocalMessage? Candidate(IEnumerable<LocalMessage> messages, string watermark, string selfId, string trigger) =>
         Candidates(messages, watermark, selfId, trigger).FirstOrDefault();
@@ -27,18 +28,24 @@ public sealed class AutoReplySession(AiService ai, Func<ApiSendCommand, Task<Tes
         if (string.IsNullOrWhiteSpace(result.Text) || result.Text.Length > 8000)
             throw new InvalidOperationException("자동 답변 길이가 유효하지 않아 중지했습니다.");
         var identity = Identity(room, candidate);
-        if (result.Attachment is not null)
+        var day = dailyReplies.Today;
+        var sendImage = result.ImagePath is not null || (result.Attachment is not null
+            && (result.Emotion != "neutral" || dailyReplies.IsFirstReply(room, day, identity)));
+        if (sendImage)
         {
-            StatusChanged?.Invoke($"{room.Title} · {PersonaExpression.Find(result.Emotion).Name} 이미지 먼저 전송 중");
-            var imageReceipt = await send(new("bot-image-" + identity, room.Title, "") { Attachment = result.Attachment });
+            StatusChanged?.Invoke($"{room.Title} · {(result.ImagePath is not null ? "생성한" : PersonaExpression.Find(result.Emotion).Name)} 이미지 먼저 전송 중");
+            var imageReceipt = await send(new("bot-image-" + identity, room.Title, "")
+            { ImagePath = result.ImagePath, Attachment = result.ImagePath is null ? result.Attachment : null });
             if (!imageReceipt.EnterPosted || imageReceipt.InputCleared != true)
                 throw new InvalidOperationException("이미지 발송 결과가 불확실해 텍스트 답변을 보내지 않고 중지했습니다. 발송 이력과 대화를 확인하세요.");
+            dailyReplies.RecordSent(room, day, identity);
             cancellation.ThrowIfCancellationRequested();
         }
         StatusChanged?.Invoke($"{room.Title} · 답변 텍스트 전송 중");
         var receipt = await send(new("bot-" + identity, room.Title, result.Text));
         if (!receipt.EnterPosted || receipt.InputCleared != true)
             throw new InvalidOperationException("답변 발송 결과 확인이 필요해 자동 답장을 중지했습니다. 발송 이력과 대화를 확인하세요.");
+        dailyReplies.RecordSent(room, day, identity);
     }
 
     public async Task RunAsync(LocalRoom room, string selfId, string trigger, CancellationToken cancellation)
@@ -75,7 +82,7 @@ public sealed class AutoReplySession(AiService ai, Func<ApiSendCommand, Task<Tes
             {
             // Consume the trigger before generation; failures are not retried as new sends.
             StatusChanged?.Invoke($"{room.Title} 답변 생성 중 · 이번 묶음 {pending.Count}개 호출");
-            var result = await ai.GenerateAsync(new(room.Profile, room.Id, "reply", $"메시지 ID {candidate.Id}에만 답하라. 다른 호출은 별도로 처리된다. 호출 내용: {PromptJson.Serialize(candidate.Text)}"), cancellation, new SessionProgress(s => StatusChanged?.Invoke($"{room.Title} · {s}")));
+            var result = await ai.GenerateAsync(new(room.Profile, room.Id, "reply", $"메시지 ID {candidate.Id}에만 답하라. 다른 호출은 별도로 처리된다. 호출 내용: {PromptJson.Serialize(candidate.Text)}") { TargetMessageId = candidate.Id }, cancellation, new SessionProgress(s => StatusChanged?.Invoke($"{room.Title} · {s}")));
             await SendReplyAsync(room, candidate, result, cancellation);
             StatusChanged?.Invoke($"{room.Title} · {result.Provider} 답변 전송 요청 처리 · 다음 호출 대기");
 

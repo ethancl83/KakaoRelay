@@ -29,6 +29,7 @@ public sealed class PersonaProfile
     public string Label { get; set; } = "새 페르소나";
     public BotPersona Persona { get; set; } = new();
     public bool AttachImages { get; set; }
+    public KnowledgeSettings Knowledge { get; set; } = new();
 }
 public sealed class AiSettings
 {
@@ -87,6 +88,8 @@ public sealed class AiSettings
         if (Personas.Count != 3 || Personas.Any(p => p is null) || Personas.Select(p => p.Id).Distinct().Count() != 3) throw new ArgumentException("페르소나 3개의 ID가 서로 달라야 합니다.");
         foreach (var p in Personas)
         {
+            if (p.Knowledge is null) throw new ArgumentException("지식베이스 설정을 확인하세요.");
+            p.Knowledge.Validate();
             ImageRoot(p.Id);
             if (string.IsNullOrWhiteSpace(p.Label) || p.Persona is null || string.IsNullOrWhiteSpace(p.Persona.Name)
                 || new[] { p.Label, p.Persona.Name, p.Persona.Role, p.Persona.Tone, p.Persona.Style, p.Persona.Instructions }.Any(t => t is null || t.Length > 10000))

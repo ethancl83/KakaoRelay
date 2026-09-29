@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "KakaoRelay Local Gateway",
-    "version": "0.7.4",
+    "version": "0.7.5",
     "description": "인증된 로컬 Windows 게이트웨이. 메시지 전송, SQLCipher 4 로컬 대화 읽기, CLI AI 분석·페르소나 설정."
   },
   "security": [
@@ -767,6 +767,13 @@
             "type": "string",
             "description": "본문. 줄바꿈 지원. 임의 글자 수 제한 없음. 공백뿐인 본문 및 NUL 금지."
           },
+          "sendDelayMs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 30000,
+            "default": 1000,
+            "description": "텍스트 입력 응답 후 Enter 전 대기(ms). 입력 응답 시간 초과에도 대기 후 진행하며 본문 재확인은 하지 않음. 이미지에는 미적용. 같은 요청 ID의 대기 시간을 바꿔도 재전송하지 않음."
+          },
           "imagePath": {
             "type": "string",
             "description": "PC 로컬 이미지 절대 경로. PNG/JPEG/GIF/BMP/WebP."
@@ -847,6 +854,14 @@
           "enterPosted": {
             "type": "boolean",
             "description": "Enter 요청 큐 등록. 수신 확인 아님"
+          },
+          "inputResponseTimedOut": {
+            "type": "boolean",
+            "description": "본문 입력 응답이 시간 초과했으며 추가 대기 후 전송을 시도한 경우 true"
+          },
+          "sendDelayMs": {
+            "type": ["integer", "null"],
+            "description": "API 텍스트 전송에 사용한 대기 시간(ms). 기존 기록·수동 전송·이미지는 null"
           },
           "inputCleared": {
             "type": [
@@ -1159,6 +1174,10 @@
             "type": "string",
             "maxLength": 10000,
             "default": ""
+          },
+          "targetMessageId": {
+            "type": ["string", "null"],
+            "description": "자동답장에서 현재 답변할 메시지 ID. 과거 이미지 요청의 반복 실행을 피하기 위한 대상 지정."
           }
         }
       },
@@ -1219,6 +1238,14 @@
           },
           "emotion": {
             "type": "string"
+          },
+          "imagePath": {
+            "type": ["string", "null"],
+            "description": "CLI로 생성하고 검증한 로컬 PNG 경로. send-image로 먼저 전송할 수 있습니다."
+          },
+          "imageError": {
+            "type": ["string", "null"],
+            "description": "이미지 생성 실패 진단. 실패 시 imagePath는 null이며 text는 실패 안내입니다."
           },
           "attachment": {
             "anyOf": [

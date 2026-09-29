@@ -118,7 +118,7 @@
                       <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBox Text="{Binding EditingProfile.Persona.Name, UpdateSourceTrigger=PropertyChanged}" />
-                    <CheckBox Grid.Column="1" Content="이미지 첨부" IsChecked="{Binding EditingProfile.AttachImages}" VerticalAlignment="Center" Margin="12,0,0,6" />
+                    <CheckBox Grid.Column="1" Content="이미지 첨부" IsChecked="{Binding EditingProfile.AttachImages}" VerticalAlignment="Center" Margin="12,0,0,6" ToolTip="감정이 드러나는 답변에만 감정 이미지를 보냅니다. 감정 없는 답변은 방별로 오늘 첫 답장일 때만 기본 이미지를 보냅니다." />
                   </Grid>
                   <TextBlock Text="역할" />
                   <TextBox Text="{Binding EditingProfile.Persona.Role, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" />
@@ -134,15 +134,34 @@
             <TabItem Header="이미지">
               <local:PersonaImagesPanel x:Name="PersonaImages" />
             </TabItem>
+            <TabItem Header="지식베이스">
+              <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="12" IsEnabled="{Binding Idle}">
+                  <TextBlock Text="옵시디언 보관함" FontWeight="SemiBold" />
+                  <TextBlock Text="이 페르소나를 사용하는 방에서 관련 노트를 참고합니다. 공유할 노트만 담은 보관함 또는 하위 폴더를 선택하세요." FontSize="11" Margin="0,6" />
+                  <TextBox Text="{Binding EditingProfile.Knowledge.VaultPath, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="옵시디언 보관함 경로" />
+                  <WrapPanel>
+                    <Button Content="폴더 선택" Click="KnowledgeFolder_Click" Padding="10,6" Margin="0,0,6,0" />
+                    <Button Content="폴더 열기" Click="KnowledgeOpen_Click" Padding="10,6" />
+                  </WrapPanel>
+                  <CheckBox Content="답변에 지식 노트 사용" IsChecked="{Binding EditingProfile.Knowledge.Enabled}" Margin="0,12" />
+                  <TextBlock Text="관련 노트의 발췌는 AI 서비스에 전달됩니다. 노트 수정·삭제는 다음 요청부터 반영됩니다. 대화분석 결과는 검토 후 ‘요약을 노트로 저장’으로 쌓을 수 있습니다." FontSize="11" Foreground="{StaticResource Muted}" />
+                  <TextBlock Text="검색 미리보기" Margin="0,16,0,0" FontWeight="SemiBold" />
+                  <TextBox Text="{Binding KnowledgeQuery, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="지식 검색어" />
+                  <Button Content="관련 노트 확인" Click="KnowledgeSearch_Click" HorizontalAlignment="Left" Padding="10,6" />
+                  <TextBox Text="{Binding KnowledgePreview, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Height="150" AutomationProperties.Name="지식 검색 결과" />
+                </StackPanel>
+              </ScrollViewer>
+            </TabItem>
           </TabControl>
         </Grid>
       </TabItem>
       <TabItem Header="프로바이더">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
           <StackPanel Margin="12" IsEnabled="{Binding Idle}">
-            <TextBlock Text="선택 방식" />
+            <TextBlock Text="먼저 사용할 프로바이더" />
             <ComboBox ItemsSource="{Binding ProviderChoices}" SelectedItem="{Binding Settings.Provider}" />
-            <TextBlock Text="auto: 실패·미설치 시 Codex → Grok → Claude. 직접 선택하면 다른 서비스로 전환하지 않습니다." FontSize="11" Foreground="{StaticResource Muted}" />
+            <TextBlock Text="auto는 Codex부터, 직접 선택하면 해당 프로바이더부터 시작합니다. 실패하면 Codex → Grok → Claude → Codex 순환으로 최대 2회전 후 종료합니다. 사용 안 함은 건너뜁니다." FontSize="11" Foreground="{StaticResource Muted}" />
             <ItemsControl ItemsSource="{Binding Settings.Providers}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
@@ -214,10 +233,13 @@
             <TextBox Text="{Binding Answer, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="{Binding Busy}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="70" AutomationProperties.Name="AI 응답" />
             <TextBlock Text="응답을 기다리는 중입니다. 완료되면 여기에 표시됩니다." Visibility="{Binding AnswerWaitingVisibility}" Background="White" Foreground="{StaticResource Muted}" VerticalAlignment="Top" Margin="12,14" TextWrapping="Wrap" IsHitTestVisible="False" />
           </Grid>
-          <DockPanel Grid.Row="6">
+          <StackPanel Grid.Row="6">
+            <Button Content="요약을 노트로 저장" Click="SaveKnowledgeNote_Click" IsEnabled="{Binding CanSaveKnowledgeNote}" HorizontalAlignment="Left" Padding="10,7" Margin="0,0,0,6" ToolTip="대화 분석 결과를 검토·수정한 뒤 해당 방의 페르소나 보관함에 저장합니다." />
+          <DockPanel>
             <Button Content="발송란으로 가져오기" Click="Compose_Click" IsEnabled="{Binding CanCompose}" DockPanel.Dock="Right" Padding="10,7" />
             <TextBlock Text="선택한 방의 최근 대화가 선택된 AI 서비스로 전달됩니다. 자동 선택은 Codex → Grok → Claude 순서입니다." FontSize="10" Foreground="{StaticResource Muted}" Margin="0,0,8,0" />
           </DockPanel>
+          </StackPanel>
         </Grid>
       </TabItem>
     </TabControl>

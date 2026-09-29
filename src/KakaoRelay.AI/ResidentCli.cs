@@ -92,7 +92,7 @@ internal sealed class ResidentCliSession : IDisposable
         this.provider = provider; this.folder = Path.GetFullPath(folder); resumeId = sessionId;
         SessionId = sessionId ?? Guid.NewGuid().ToString();
         var exe = CliAiRunner.Resolve(provider) ?? throw new InvalidOperationException("CLI 실행 파일 없음");
-        pipe = new(exe, this.folder, CliAiRunner.ResidentArguments(provider, sessionId, SessionId));
+        pipe = new(exe, this.folder, CliAiRunner.ResidentArguments(provider, sessionId, SessionId), provider.Id);
     }
     public async Task InitializeAsync(CancellationToken ct)
     {
@@ -100,7 +100,7 @@ internal sealed class ResidentCliSession : IDisposable
         await pipe.CallAsync("initialize", new { clientInfo = new { name = "kakaorelay", version = "1.0.0" } }, ct).ConfigureAwait(false);
         await pipe.SendAsync(new { method = "initialized", @params = new { } }, ct).ConfigureAwait(false);
         var configuration = await pipe.CallAsync("config/read", new { includeLayers = false }, ct).ConfigureAwait(false);
-        var overrides = new Dictionary<string, object> { ["features.shell_tool"] = false, ["web_search"] = "disabled" };
+        var overrides = new Dictionary<string, object> { ["features.shell_tool"] = false, ["web_search"] = "live" };
         if (provider.Effort != "default") overrides["model_reasoning_effort"] = provider.Effort;
         // Disable inherited integrations for this chatbot thread, without editing user config.
         if (configuration.TryGetProperty("config", out var config))
@@ -144,7 +144,7 @@ internal sealed class ResidentCliSession : IDisposable
                     return (CliAiRunner.ParseJsonOutput(evt.GetRawText()), SessionId);
                 }
                 if (type.ValueKind == JsonValueKind.String && type.GetString() == "control_request")
-                    await pipe.SendAsync(new { type = "control_response", response = new { subtype = "error", request_id = evt.GetProperty("request_id").GetString(), error = "Tools are disabled for chatbot replies." } }, ct).ConfigureAwait(false);
+                    await pipe.SendAsync(new { type = "control_response", response = new { subtype = "error", request_id = evt.GetProperty("request_id").GetString(), error = "Only pre-approved WebSearch and WebFetch tools are available." } }, ct).ConfigureAwait(false);
             }
         }
         var text = new StringBuilder();
@@ -184,11 +184,12 @@ internal sealed class CliJsonPipe : IDisposable
     private long sequence;
     private int disposed;
     public bool Alive => Volatile.Read(ref disposed) == 0 && !process.HasExited;
-    public CliJsonPipe(string exe, string cwd, IEnumerable<string> arguments)
+    public CliJsonPipe(string exe, string cwd, IEnumerable<string> arguments, string provider)
     {
         var info = new ProcessStartInfo(exe) { WorkingDirectory = cwd, UseShellExecute = false, CreateNoWindow = true,
             RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true,
             StandardInputEncoding = new UTF8Encoding(false), StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8 };
+        ProviderStorage.Configure(info, provider);
         foreach (var arg in arguments) info.ArgumentList.Add(arg);
         foreach (var key in new[] { "CLAUDECODE", "CODEX_THREAD_ID", "CODEX_INTERNAL_ORIGINATOR_OVERRIDE" }) info.Environment.Remove(key);
         process = Process.Start(info) ?? throw new InvalidOperationException("CLI 시작 실패");

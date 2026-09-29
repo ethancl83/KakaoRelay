@@ -7,7 +7,8 @@ param(
     [string]$ImagePath,
     [string]$PersonaId,
     [ValidateSet('astra','grok')][string]$ImageProvider,
-    [string]$ImageId
+    [string]$ImageId,
+    [ValidateRange(0,30000)][int]$SendDelayMs = 1000
 )
 $ErrorActionPreference = 'Stop'
 $connectionPath = Join-Path $env:LOCALAPPDATA 'KakaoRelay\connection.json'
@@ -38,7 +39,7 @@ if ($Action -eq 'send-image') {
     if (-not $Recipient -or [string]::IsNullOrWhiteSpace($Message) -or -not $RequestId) {
         throw 'Recipient, Message 또는 MessageFile, RequestId가 필요합니다. 재시도에는 같은 RequestId를 사용하세요.'
     }
-    $body = @{ requestId = $RequestId; recipient = $Recipient; message = $Message } | ConvertTo-Json -Compress
+    $body = @{ requestId = $RequestId; recipient = $Recipient; message = $Message; sendDelayMs = $SendDelayMs } | ConvertTo-Json -Compress
     $result = Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
 } else {
     $result = Invoke-RestMethod -Uri $uri -Method Get -Headers $headers

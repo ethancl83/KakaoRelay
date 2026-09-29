@@ -52,7 +52,7 @@ internal static class PersonaChecks
         store.Use(another.Id); catalog.Apply("astra");
         check(catalog.AppliedImagePath("happy") == store.ImagePath(another.Id), "Applying a candidate changes only the chosen expression");
         check(catalog.ResolveAttachment("default", "happy") == new PersonaAttachment("default", "astra", another.Id)
-            && catalog.ResolveAttachment("default", "sad")?.ImageId == basis.Id, "Reply attachments select the adopted emotion image and fall back to neutral only when that emotion is missing");
+            && catalog.ResolveAttachment("default", "sad") is null, "Reply attachments select the adopted emotion image and omit missing expressions instead of sending neutral");
         foreach (var emotion in PersonaExpression.All)
         {
             var parsed = AiService.ParseReply($"감정 답변\n[[emotion:{emotion.Id}]]");
@@ -69,7 +69,8 @@ internal static class PersonaChecks
         try { store.Use(happy.Id); check(false, "cross-reference expression"); } catch (InvalidOperationException) { check(true, "Expressions from different characters cannot be mixed"); }
         var grok = catalog.Store("grok"); grok.Add("neutral", null, "other", "fixture", "grok", "fixture", Png); catalog.Apply("grok");
         check(catalog.AppliedProvider() == "grok" && store.Load().Images.Count == 4 && grok.Load().Images.Count == 1, "Astra and Grok sets remain independent when switching applied version");
-        check(catalog.ResolveAttachment("friend", "happy") is { PersonaId: "friend", Provider: "grok" } attachment && attachment.ImageId == grok.Load().ReferenceId, "Emotion attachments follow the persona's applied provider rather than a different image version");
+        check(catalog.ResolveAttachment("friend", "happy") is null
+            && catalog.ResolveAttachment("friend", "neutral") is { PersonaId: "friend", Provider: "grok" } attachment && attachment.ImageId == grok.Load().ReferenceId, "Neutral greeting uses the applied provider; missing emotions do not substitute its default image");
         try { store.Delete(nextBasis.Id); check(false, "active deletion"); } catch (InvalidOperationException) { check(true, "Active reference cannot be deleted"); }
         try { store.ImagePath("../outside"); check(false, "path traversal"); } catch (InvalidDataException) { check(true, "Image IDs cannot escape the managed library"); }
         await ImageCliChecks.RunAsync(root, check);

@@ -8,6 +8,8 @@ namespace KakaoRelay.Core;
 
 public sealed record TestSendRequest(string RequestId, string Recipient, string Message, int ExpectedProcessId, string ExpectedWindowHandle, DateTimeOffset ExpiresAt, bool VerifiedEmptyPlaceholder = false, string? ContinuationOf = null)
 {
+    // API text sends wait instead of reading back the inserted message. Null retains the manual flow.
+    public int? SendDelayMs { get; init; }
     public void Validate()
     {
         if (!Regex.IsMatch(RequestId ?? "", @"\A[a-zA-Z0-9_-]{1,80}\z")) throw new ArgumentException("Invalid request ID");
@@ -15,6 +17,7 @@ public sealed record TestSendRequest(string RequestId, string Recipient, string 
         if (ExpectedProcessId <= 0 || !Regex.IsMatch(ExpectedWindowHandle ?? "", @"\A0x[0-9a-fA-F]{1,16}\z")) throw new ArgumentException("Missing observed window identity");
         if (ExpiresAt <= DateTimeOffset.Now || ExpiresAt > DateTimeOffset.Now.AddMinutes(15)) throw new ArgumentException("Test request must expire within 15 minutes");
         if (ContinuationOf is not null && (!Regex.IsMatch(ContinuationOf, @"\A[a-zA-Z0-9_-]{1,80}\z") || ContinuationOf == RequestId)) throw new ArgumentException("Invalid continuation ID");
+        if (SendDelayMs is < 0 or > 30000) throw new ArgumentException("Send delay must be between 0 and 30000 milliseconds");
     }
     public string Fingerprint() => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { Recipient, Message, ExpectedProcessId, ExpectedWindowHandle, VerifiedEmptyPlaceholder }))));
     // Legacy opt-in field retained for receipt fingerprint compatibility.
@@ -35,6 +38,8 @@ public sealed class TestSendReceipt
     public DateTimeOffset StartedAt { get; set; } = DateTimeOffset.Now;
     public DateTimeOffset? FinishedAt { get; set; }
     public bool EnterPosted { get; set; }
+    public bool InputResponseTimedOut { get; set; }
+    public int? SendDelayMs { get; set; }
     public string Kind { get; set; } = "text";
     public bool AttachmentQueued { get; set; }
     public bool? InputCleared { get; set; }
@@ -57,6 +62,9 @@ public interface ITestSendTransport
     void WriteDraft(string message);
     void PostEnter();
 }
+
+// Only the actual text insertion timeout may continue; selection, identity and access failures still stop.
+public sealed class TextInputTimeoutException(Exception inner) : TimeoutException("Text input response timed out", inner);
 
 public static class TestSender
 {
@@ -82,7 +90,7 @@ public static class TestSender
                 // Never replay any previously recorded request, even after a crash before completion.
                 return existing;
             }
-            var receipt = new TestSendReceipt { RequestId = request.RequestId, Recipient = request.Recipient, Fingerprint = request.Fingerprint() };
+            var receipt = new TestSendReceipt { RequestId = request.RequestId, Recipient = request.Recipient, Fingerprint = request.Fingerprint(), SendDelayMs = request.SendDelayMs };
             Save(path, receipt);
             bool inputAttempted = false;
             try
@@ -103,8 +111,14 @@ public static class TestSender
                 receipt.Status = "inputting";
                 Save(path, receipt);
                 inputAttempted = true;
-                transport.WriteDraft(request.Message);
-                if (!TestSendRequest.SameText(transport.ReadDraft(), request.Message)) throw new InvalidOperationException("Input read-back differs from the requested message");
+                try { transport.WriteDraft(request.Message); }
+                catch (TextInputTimeoutException) when (request.SendDelayMs.HasValue)
+                {
+                    receipt.InputResponseTimedOut = true;
+                    Save(path, receipt);
+                }
+                if (request.SendDelayMs is { } delay) Thread.Sleep(delay);
+                else if (!TestSendRequest.SameText(transport.ReadDraft(), request.Message)) throw new InvalidOperationException("Input read-back differs from the requested message");
                 transport.ValidateTarget(request);
                 receipt.Status = "dispatching";
                 Save(path, receipt); // Persist BEFORE the irreversible Enter request.

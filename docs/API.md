@@ -1,4 +1,4 @@
-# KakaoRelay Gateway API · v1 (앱 v0.7.4)
+# KakaoRelay Gateway API · v1 (앱 v0.7.5)
 
 ## 이미지 전송 · POST /v1/send-image
 
@@ -104,13 +104,18 @@ POST /v1/send:
 {
   "requestId": "report-20260928-evening",
   "recipient": "대화방 이름",
-  "message": "첫 줄\n둘째 줄"
+  "message": "첫 줄\n둘째 줄",
+  "sendDelayMs": 1000
 }
 ```
 
 requestId는 영문·숫자·하이픈·밑줄 1~80자입니다. 이 제한은 파일로 보존하는 요청 식별자에만 적용합니다.
 본문에는 앱 자체의 글자 수 제한을 두지 않습니다. 공백뿐인 본문과 NUL 문자는 거부합니다.
-카카오톡 자체의 입력·전송 제한은 우회하지 않으며, 입력 결과가 원문과 다르면 Enter를 보내지 않습니다.
+`sendDelayMs`는 입력 요청이 반환된 뒤 Enter를 보내기 전 대기 시간입니다. 생략하면 1000ms, 허용 범위는 0~30000ms입니다. 본문 입력 후 이 시간만큼 기다리고, 입력 내용을 다시 비교하지 않고 Enter를 한 번 보냅니다. 본문 입력 응답의 2초 시간 초과도 같은 요청 안에서 추가 대기 후 전송으로 이어집니다. 접근 거부, 입력 전 선택 실패, 대상 창 변경은 중단합니다. 입력 전 기존 초안 보호는 유지하며 카카오톡 자체 제한을 우회하지 않습니다.
+
+`inputResponseTimedOut`는 본문 입력 응답이 시간 초과했는지, 응답의 `sendDelayMs`는 사용한 대기 시간을 나타냅니다. `inputCleared`는 Enter 이후 입력창이 비워졌는지 별도로 확인한 결과입니다. 본문 확인을 생략하므로 실제 입력 누락 여부는 판정하지 않습니다. 이미지 첨부에는 이 대기를 적용하지 않습니다.
+
+같은 요청 ID의 대기 시간만 바꿔도 기존 결과를 반환하며 다시 보내지 않습니다. 스크립트에서는 `-SendDelayMs 1500`으로 지정할 수 있습니다.
 
 HTTP 200은 **처리 결과가 반환되었다는 뜻**입니다. 반드시 `status`, `enterPosted`, `inputCleared`를 읽으세요.
 
@@ -141,7 +146,9 @@ HTTP 200은 **처리 결과가 반환되었다는 뜻**입니다. 반드시 `sta
 
 - 같은 requestId + 같은 대화방/본문: 저장된 결과 반환. 창을 닫고 다시 열어도 다시 보내지 않습니다.
 - 같은 requestId + 다른 대화방/본문: 409 request_id_conflict.
-- 앱에서 다른 작업 처리 중: 409 busy. 잠시 후 같은 ID로 조회하거나 동일 요청을 다시 호출합니다.
+- 자동답장·API의 텍스트/이미지 발송이 겹치면 공용 대기열에서 접수 순서대로 처리합니다. 진행 중인 수동 발송이나 앱 작업도 완료될 때까지 기다리며, HTTP 응답은 해당 요청 처리가 끝난 뒤 반환됩니다.
+- 클라이언트 연결이 끊겨도 접수된 발송은 계속 처리됩니다. 시간 초과 시 같은 requestId로 조회하거나 동일 요청을 다시 호출하세요. 중복 요청은 한 번만 발송합니다.
+- 대기열은 메모리에 있으며 앱 재시작 시 복원되지 않습니다. 종료 중 새 요청과 아직 발송을 시작하지 않은 대기 요청은 503 shutting_down으로 반환됩니다.
 - 수신방이 없거나 동명이 모호함: 409 room_unavailable. 대상이 확인되기 전에는 요청을 예약하지 않습니다.
 - 요청 예약 후 기록이 불명확하게 중단됨: 409 uncertain. 새 ID로 자동 재전송하지 않습니다.
 - 잘못된 JSON/식별자/본문: 400 invalid_request.
@@ -168,11 +175,13 @@ v0.6 Windows 앱은 `capabilities.recentMessages.supported=true`를 반환합니
 | GET /v1/ai/providers | 설치된 CLI 경로·상태. 로그인 성공을 뜻하지 않음 |
 | POST /v1/ai/generate | 분석·답변·질문 응답. 카카오톡에 전송하지 않음 |
 
+웹검색을 사용할 수 있으며 검색한 답변에는 출처 URL을 포함하도록 안내합니다. Windows에서 `reply`/`chat` 요청이 새 이미지 생성을 요구하면 결과에 검증된 `imagePath`가 반환됩니다. 해당 경로를 `POST /v1/send-image`로 보내고 발송 결과를 확인한 다음 `text`를 보내세요. `imageError`가 있으면 생성 실패이며 `text`도 실패 안내로 대체됩니다. 자동답장은 이 순서를 앱이 처리합니다. `targetMessageId`를 지정하면 그 메시지를 현재 답변 대상으로 안내합니다.
+
 ```json
 {"profile":"방 목록에서 받은 profile","roomId":"방 목록에서 받은 id","mode":"analyze","instruction":"결정된 내용과 할 일을 정리해줘"}
 ```
 
-`mode`는 `analyze`, `reply`, `chat`입니다. 결과는 `text`, `provider`, `model`, `effort`, `mode`, `room`, `messageCount`, `attempts`를 포함합니다. `auto` 우선순위는 Codex → Grok → Claude이며 직접 선택은 fallback하지 않습니다. 설정은 [AI 사용법](AI.md)을 참고하세요.
+`mode`는 `analyze`, `reply`, `chat`입니다. 결과는 `text`, `provider`, `model`, `effort`, `mode`, `room`, `messageCount`, `attempts`를 포함합니다. `auto`는 Codex부터, 직접 선택은 해당 프로바이더부터 시작합니다. 실패하면 Codex → Grok → Claude → Codex 순환으로 최대 2회전 후 503으로 종료합니다. 비활성 프로바이더는 건너뛰며 사용자 취소 시 즉시 중단합니다. 설정은 [AI 사용법](AI.md)을 참고하세요.
 
 키 없음·DB 변경 중·AI 처리 중은 409, 방 미조회는 404, CLI 모두 실패는 503 `ai_unavailable`입니다. 생성 취소는 HTTP 요청을 중단하면 됩니다. 발송과 생성은 별도 요청이며 생성 결과를 `POST /v1/send`에 전달할 때는 기존 발송 규칙을 따르세요. 자동 답장 시작/중지는 Windows UI에서만 제공합니다.
 

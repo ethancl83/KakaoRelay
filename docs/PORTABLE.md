@@ -39,7 +39,7 @@ dotnet publish src/KakaoRelay.Portable -c Release -r osx-arm64 --self-contained 
 - 카카오톡 한국어 TXT 내보내기와 KakaoRelay JSON 파일 가져오기
 - 분석·질문·답변 초안과 복사
 - 페르소나 이름·역할·말투·대화 성향·추가 지침
-- Codex → Grok → Claude 자동 전환 또는 프로바이더 직접 선택
+- 선택한 프로바이더부터 Codex → Grok → Claude 순환으로 최대 2회전 시도(auto는 Codex부터)
 - 프로바이더별 실행 경로·모델·effort, 문맥 수·제한 시간 설정
 - 취소, CLI 설치 상태 표시
 

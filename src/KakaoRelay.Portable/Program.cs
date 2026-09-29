@@ -13,6 +13,7 @@ var app = builder.Build();
 var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
 var expected = Encoding.UTF8.GetBytes("Bearer " + token);
 var reader = new ImportedChatReader();
+ProviderStorage.Initialize();
 var settings = new AiSettingsStore(AiSettingsStore.DefaultPath);
 using var aiRunner = new CliAiRunner();
 var ai = new AiService(reader, settings, aiRunner);

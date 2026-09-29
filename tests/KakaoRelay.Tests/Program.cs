@@ -67,6 +67,20 @@ var checks = 0;
 void Check(bool condition, string description) { if (!condition) throw new Exception(description); checks++; Console.WriteLine($"PASS {description}"); }
 try
 {
+    if (args.Contains("--chat-tools"))
+    {
+        await ChatToolChecks.RunAsync(root, Check);
+        await AiChecks.RunAsync(root, Check);
+        await AutoReplyChecks.RunAsync(root, Check);
+        Console.WriteLine($"All {checks} chat tool checks passed.");
+        return 0;
+    }
+    if (args.Contains("--api-checks"))
+    {
+        await ApiChecks.RunAsync(root, Check);
+        Console.WriteLine($"All {checks} API checks passed.");
+        return 0;
+    }
     var exposed = new DiagnosticReport { Status = "complete", Processes = [new(1, 1, "test")], Windows = [new() { Controls = [new() { ControlType = "Edit", ValueAvailable = true, ValueReadOnly = false, InvokeAvailable = true }] }] };
     Check(exposed.InputCandidateCount == 1 && exposed.Summary.Contains("검증"), "Exposed controls remain unverified, not send-ready");
     Check(!exposed.BackgroundInputTested && !exposed.SendingTested && exposed.ReadOnly && !exposed.MessageContentsCollected, "Read-only diagnosis never claims an input or send test");
@@ -103,6 +117,7 @@ try
     WorkspaceChecks.Run(root, Check);
     await ApiChecks.RunAsync(root, Check);
     await AiChecks.RunAsync(root, Check);
+    await ChatToolChecks.RunAsync(root, Check);
     await PersonaChecks.RunAsync(root, Check);
     await ReplyModeChecks.RunAsync(root, Check);
     await AutoReplyChecks.RunAsync(root, Check);

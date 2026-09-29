@@ -71,14 +71,19 @@ public sealed class KakaoTestTransport : ITestSendTransport
         if (SendNumber(editor, 0x00B1, 0, -1, 0x0002, 2000, out _) == 0)
             throw new Win32Exception(Marshal.GetLastWin32Error(), "Selecting the verified test draft failed");
         if (SendText(editor, 0x00C2, 1, message, 0x0002, 2000, out _) == 0)
-            throw new Win32Exception(Marshal.GetLastWin32Error(), "Text input failed or is uncertain");
+        {
+            var error = Marshal.GetLastWin32Error();
+            var failure = new Win32Exception(error, "Text input failed or is uncertain");
+            if (error == 1460) throw new TextInputTimeoutException(failure); // ERROR_TIMEOUT
+            throw failure;
+        }
     }
 
     public void PostEnter()
     {
         if (request is null) throw new InvalidOperationException("Target was not validated");
         ValidateTarget(request);
-        if (!TestSendRequest.SameText(ReadDraft(), request.Message)) throw new InvalidOperationException("Draft changed before Enter");
+        if (request.SendDelayMs is null && !TestSendRequest.SameText(ReadDraft(), request.Message)) throw new InvalidOperationException("Draft changed before Enter");
         if (new[] { 0x10, 0x11, 0x12 }.Any(k => (GetAsyncKeyState(k) & 0x8000) != 0)) throw new InvalidOperationException("A keyboard modifier is held; Enter was not sent");
         if (!PostMessageW(editor, 0x0100, 0x0D, 0x001C0001)) throw new Win32Exception(Marshal.GetLastWin32Error(), "Enter key-down was not queued");
         if (!PostMessageW(editor, 0x0101, 0x0D, unchecked((nint)0xC01C0001))) throw new Win32Exception(Marshal.GetLastWin32Error(), "Enter key-up is uncertain; do not resend");

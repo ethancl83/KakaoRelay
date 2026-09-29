@@ -13,6 +13,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 {
     private readonly ComposeSession compose = new();
     private bool working, targetReady, shuttingDown;
+    private readonly AsyncWorkQueue sendQueue = new();
+    private TaskCompletionSource? workFinished;
+    private int queuedSends;
     private string messageBody = "";
     private ConversationTarget? selectedConversation;
     private TestSendReceipt? currentReceipt, selectedReceipt;
@@ -20,9 +23,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
     public ObservableCollection<ConversationTarget> Conversations { get; } = [];
     public ObservableCollection<TestSendReceipt> History { get; } = [];
-    public bool Working => working || ChatbotPanel.Busy || ChatbotPanel.BotsRunning || ChatbotPanel.ImagesBusy;
-    public bool NotWorking => !working && !shuttingDown;
-    public bool CanEdit => !working && !shuttingDown;
+    public bool Working => working || queuedSends > 0 || ChatbotPanel.Busy || ChatbotPanel.BotsRunning || ChatbotPanel.ImagesBusy;
+    public bool NotWorking => CanEdit;
+    public bool CanEdit => !working && queuedSends == 0 && !shuttingDown;
     public void PrepareShutdown() { shuttingDown = true; ChatbotPanel.Stop(); ApiStatus = "작업 완료 후 종료 중"; RefreshAll(); }
     public bool ShowSendResult => compose.Submitted || currentReceipt is not null;
     public bool ShowObserveCurrent => currentReceipt is { Status: "needs-review", EnterPosted: true };
@@ -68,7 +71,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public MainWindow()
     {
         InitializeComponent(); DataContext = this;
-        Title = "KakaoRelay v0.7.4";
+        Title = "KakaoRelay v0.7.5";
         Loaded += (_, _) => RestoreFixedSize();
         DpiChanged += (_, _) => Dispatcher.BeginInvoke(RestoreFixedSize);
         Loaded += async (_, _) => { LoadHistory(); await RefreshRoomsAsync(); };
@@ -89,10 +92,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         Width = MinWidth;
         Height = MinHeight;
     }
-    public void InitializeAi(AiService ai, Func<ApiSendCommand, Task<TestSendReceipt>> send) => ChatbotPanel.Initialize(ai, send);
+    public void InitializeAi(AiService ai, Func<ApiSendCommand, CancellationToken, Task<TestSendReceipt>> send) => ChatbotPanel.Initialize(ai, send);
     private void Refresh([CallerMemberName] string? property = null) => PropertyChanged?.Invoke(this, new(property));
     private void RefreshAll() => Refresh(string.Empty);
-    private void SetWorking(bool value) { working = value; RefreshAll(); }
+    private void SetWorking(bool value)
+    {
+        working = value;
+        if (value) workFinished ??= new(TaskCreationOptions.RunContinuationsAsynchronously);
+        else { var finished = workFinished; workFinished = null; finished?.TrySetResult(); }
+        RefreshAll();
+    }
     private async void RefreshRooms_Click(object sender, RoutedEventArgs e) => await RefreshRoomsAsync();
     private async Task RefreshRoomsAsync()
     {
@@ -161,22 +170,34 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         catch { HistoryHint = "기록을 읽을 수 없습니다. 이력 새로고침을 눌러주세요."; RefreshAll(); }
     }
-    public async Task<TestSendReceipt> SendFromApiAsync(Func<Task<TestSendReceipt>> send)
+    public async Task<TestSendReceipt> SendFromApiAsync(Func<Task<TestSendReceipt>> send, CancellationToken cancellation = default)
     {
+        cancellation.ThrowIfCancellationRequested();
         if (shuttingDown) throw new ApiFailure(503, "shutting_down", "앱이 종료 중입니다. 같은 요청 ID를 유지하세요.");
-        // The dispatcher serializes UI and API work before any native operation starts.
-        if (working) throw new ApiFailure(409, "busy", "다른 작업을 처리 중입니다. 같은 요청 ID로 다시 조회하거나 요청하세요.");
-        SetWorking(true);
+        queuedSends++;
+        RefreshAll();
         try
         {
-            var receipt = await send();
-            currentReceipt = receipt;
-            SendStatus = $"AI · {receipt.Recipient} · {receipt.DisplayStatus}";
-            SendDetail = DescribeReceipt(receipt);
-            LoadHistory();
-            return receipt;
+            return await sendQueue.Enqueue(async () =>
+            {
+                // Manual sends and UI checks finish before the next queued native operation.
+                while (working) await workFinished!.Task;
+                cancellation.ThrowIfCancellationRequested();
+                if (shuttingDown) throw new ApiFailure(503, "shutting_down", "앱이 종료 중입니다. 같은 요청 ID를 유지하세요.");
+                SetWorking(true);
+                try
+                {
+                    var receipt = await send();
+                    currentReceipt = receipt;
+                    SendStatus = $"AI · {receipt.Recipient} · {receipt.DisplayStatus}";
+                    SendDetail = DescribeReceipt(receipt);
+                    LoadHistory();
+                    return receipt;
+                }
+                finally { SetWorking(false); }
+            });
         }
-        finally { SetWorking(false); }
+        finally { queuedSends--; RefreshAll(); }
     }
     private void RefreshHistory_Click(object sender, RoutedEventArgs e) => LoadHistory();
     private void ObserveCurrent_Click(object sender, RoutedEventArgs e) { if (CanObserveCurrent) Observe(currentReceipt!); }

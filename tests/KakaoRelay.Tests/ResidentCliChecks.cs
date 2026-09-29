@@ -26,6 +26,7 @@ internal static class ResidentCliChecks
                     case "config/read": await Emit(new { id, result = new { config = new { mcp_servers = new { test = new { command = "fake" } }, plugins = new Dictionary<string, object> { ["plugin@fixture"] = new { enabled = true } } } } }); continue;
                     case "thread/start":
                     case "thread/resume":
+                        if (p.GetProperty("config").GetProperty("web_search").GetString() != "live") throw new Exception("Live web search not enabled");
                         if (p.GetProperty("config").GetProperty("mcp_servers.test.enabled").GetBoolean()
                             || p.GetProperty("config").GetProperty("plugins.plugin@fixture.enabled").GetBoolean()) throw new Exception("Integrations not disabled");
                         sid = method.GetString() == "thread/start" ? Guid.NewGuid().ToString() : p.GetProperty("threadId").GetString()!;

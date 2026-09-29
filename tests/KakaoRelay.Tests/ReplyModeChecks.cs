@@ -57,7 +57,7 @@ internal static class ReplyModeChecks
         var service=new AiService(reader,store,new Runner());
         using(var stop=new CancellationTokenSource(TimeSpan.FromSeconds(5)))
         {
-            var session=new AutoReplySession(service,c=>{sends.Add(c);return Task.FromResult(new TestSendReceipt{EnterPosted=true,InputCleared=true});});
+            var session=new AutoReplySession(service,c=>{sends.Add(c);return Task.FromResult(new TestSendReceipt{EnterPosted=true,InputCleared=true});},new DailyReplyHistory(Path.Combine(root,"mode-days")));
             session.StatusChanged+=s=>{if(s.Contains("맥락상 답변 생략"))stop.Cancel();};
             try { await session.RunAsync(reader.Room,"1","",stop.Token); } catch(OperationCanceledException) { }
             check(sends.Count==0 && service.ReplyJudge.PreferredProvider is not null,"Context SKIP sends no messages");
@@ -65,7 +65,7 @@ internal static class ReplyModeChecks
         settings.RoomReplyModes[AiSettings.RoomKey(reader.Room.Profile, reader.Room.Id)]="immediate"; store.Save(settings);
         using(var stop=new CancellationTokenSource(TimeSpan.FromSeconds(5)))
         {
-            var session=new AutoReplySession(service,c=>{sends.Add(c);stop.Cancel();return Task.FromResult(new TestSendReceipt{EnterPosted=true,InputCleared=true});});
+            var session=new AutoReplySession(service,c=>{sends.Add(c);stop.Cancel();return Task.FromResult(new TestSendReceipt{EnterPosted=true,InputCleared=true});},new DailyReplyHistory(Path.Combine(root,"mode-days")));
             try { await session.RunAsync(reader.Room,"1","",stop.Token); } catch(OperationCanceledException) { }
             check(sends.Count==1 && sends[0].Message=="SKIP" && sends[0].RequestId.StartsWith("bot-"),"Room-specific immediate mode overrides the global context mode and sends only the generated answer");
         }

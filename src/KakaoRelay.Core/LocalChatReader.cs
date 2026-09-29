@@ -186,7 +186,9 @@ public sealed class LocalChatReader : IChatReader, IDisposable
         var messages = db.Query($"SELECT logId,authorId,sendAt,type,message,coalesce(deleted,0) FROM chatLogs ORDER BY logId DESC LIMIT {limit}")
             .Select(r => new LocalMessage(r[0], r[1], names.GetValueOrDefault(r[1], r[1]), DateTimeOffset.FromUnixTimeSeconds(long.Parse(r[2])), int.Parse(r[3]), r[4], r[5] != "0"))
             .Reverse().ToList();
-        return new ChatContext(room with { Readable = true }, messages, DateTimeOffset.Now);
+        var readableRoom = room with { Readable = true };
+        rooms[rooms.IndexOf(room)] = readableRoom;
+        return new ChatContext(readableRoom, messages, DateTimeOffset.Now);
     }, cancellation);
     private async Task<T> Locked<T>(Func<T> action, CancellationToken cancellation)
     {

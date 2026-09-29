@@ -80,10 +80,12 @@ public partial class App : Application
         {
             var sends = new ApiSendService(TestSender.DefaultLedger, ConversationCatalog.Scan, () => new KakaoTestTransport(), () => new KakaoImageTransport());
             chatReader = new LocalChatReader();
+            ProviderStorage.Initialize();
             aiRunner = new CliAiRunner();
-            var ai = new AiService(chatReader, new AiSettingsStore(AiSettingsStore.DefaultPath), aiRunner);
-            Task<TestSendReceipt> Send(ApiSendCommand command) => main.Dispatcher.InvokeAsync(() => main.SendFromApiAsync(() => sends.SendAsync(command))).Task.Unwrap();
-            main.InitializeAi(ai, Send);
+            var ai = new AiService(chatReader, new AiSettingsStore(AiSettingsStore.DefaultPath), aiRunner, new ChatImageGenerator(PersonaImagesPanel.NormalizePng));
+            Task<TestSendReceipt> SendQueued(ApiSendCommand command, CancellationToken cancellation) => main.Dispatcher.InvokeAsync(() => main.SendFromApiAsync(() => sends.SendAsync(command), cancellation)).Task.Unwrap();
+            Task<TestSendReceipt> Send(ApiSendCommand command) => SendQueued(command, CancellationToken.None);
+            main.InitializeAi(ai, SendQueued);
             api = await RelayApi.StartAsync(RelayApi.DefaultConnectionPath, ConversationCatalog.Scan,
                 () => TestSender.ReadHistory(TestSender.DefaultLedger),
                 Send, ai);
