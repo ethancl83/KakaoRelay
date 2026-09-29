@@ -23,7 +23,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
     public ObservableCollection<ConversationTarget> Conversations { get; } = [];
     public ObservableCollection<TestSendReceipt> History { get; } = [];
-    public bool Working => working || queuedSends > 0 || ChatbotPanel.Busy || ChatbotPanel.BotsRunning || ChatbotPanel.ImagesBusy || KnowledgePanel.Busy;
+    public bool Working => working || queuedSends > 0 || ChatbotPanel.Busy || ChatbotPanel.BotsRunning || ChatbotPanel.ImagesBusy || KnowledgePanel.Busy || KnowledgePanel.AutomationBusy;
     public bool NotWorking => CanEdit;
     public bool CanEdit => !working && queuedSends == 0 && !shuttingDown;
     public void PrepareShutdown() { shuttingDown = true; ChatbotPanel.Stop(); KnowledgePanel.Stop(); ApiStatus = "작업 완료 후 종료 중"; RefreshAll(); }
@@ -96,6 +96,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         ChatbotPanel.Initialize(ai, send);
         KnowledgePanel.Initialize(() => ChatbotPanel.Settings, ChatbotPanel.SaveSettings);
+        KnowledgePanel.InitializeAutomation(ai);
     }
     private void Refresh([CallerMemberName] string? property = null) => PropertyChanged?.Invoke(this, new(property));
     private void RefreshAll() => Refresh(string.Empty);

@@ -120,6 +120,7 @@ try
     await ChatToolChecks.RunAsync(root, Check);
     await PersonaChecks.RunAsync(root, Check);
     await KnowledgeChecks.RunAsync(root, Check);
+    await AutoKnowledgeChecks.RunAsync(root, Check);
     await ReplyModeChecks.RunAsync(root, Check);
     await AutoReplyChecks.RunAsync(root, Check);
     CipherChecks.Run(Check);

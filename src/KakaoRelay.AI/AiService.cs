@@ -30,6 +30,7 @@ public sealed class AiService(IChatReader reader, AiSettingsStore store, IAiRunn
     private readonly System.Collections.Concurrent.ConcurrentDictionary<(string, string), SemaphoreSlim> gates = new();
     public AiSettingsStore Settings => store;
     public IChatReader Chats => reader;
+    public AutoKnowledgeService AutomaticKnowledge { get; } = new(reader, runner);
     public async Task<AiResult> GenerateAsync(AiCommand command, CancellationToken cancellation = default, IProgress<string>? progress = null)
     {
         if (command.Mode is not ("analyze" or "reply" or "chat") || command.Instruction is null || command.Instruction.Length > 10000) throw new ApiFailure(400, "invalid_ai_request", "mode 또는 질문을 확인하세요.");

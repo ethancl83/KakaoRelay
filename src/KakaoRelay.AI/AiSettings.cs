@@ -43,6 +43,7 @@ public sealed class AiSettings
     public Dictionary<string, string> RoomReplyModes { get; set; } = [];
     public string ReplyModeForRoom(string profile, string roomId) => RoomReplyModes.GetValueOrDefault(RoomKey(profile, roomId), ReplyMode);
     public List<string> SelectedBotRooms { get; set; } = [];
+    public AutoKnowledgeSettings AutoKnowledge { get; set; } = new();
     public string? SelectedChatRoom { get; set; }
     public string Provider { get; set; } = "auto";
     public int ContextMessages { get; set; } = 100;
@@ -75,6 +76,8 @@ public sealed class AiSettings
     public static readonly string[] Order = ["codex", "grok", "claude"];
     public void Validate()
     {
+        if (AutoKnowledge is null) throw new ArgumentException("대화 자동 정리 설정을 확인하세요.");
+        AutoKnowledge.Validate();
         if (new[] { ImageGptModel, ImageGrokModel }.Any(m => m is null || !Regex.IsMatch(m, "\\A[a-zA-Z0-9._:/-]{1,150}\\z"))) throw new ArgumentException("이미지 CLI 모델 이름을 확인하세요.");
         if (PollSeconds is < 1 or > 300 || ReplyMode is not ("immediate" or "trigger" or "context")) throw new ArgumentException("폴링은 1~300초이며 답변 방식을 선택해야 합니다.");
         if (RoomReplyModes is null || RoomReplyModes.Values.Any(mode => mode is not ("immediate" or "trigger" or "context"))) throw new ArgumentException("채팅방별 답변 방식을 확인하세요.");

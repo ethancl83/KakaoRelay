@@ -63,6 +63,7 @@ public static class ObsidianKnowledge
                     cancellation.ThrowIfCancellationRequested();
                     if (++entries > 10000) { limited = true; break; }
                     if (Path.GetFileName(path).StartsWith('.')) continue;
+                    if (directory == root && Path.GetFileName(path) == "검토필요") continue;
                     var attributes = File.GetAttributes(path);
                     if ((attributes & FileAttributes.ReparsePoint) != 0) { skipped++; continue; }
                     if ((attributes & FileAttributes.Directory) != 0) { directories.Push(path); continue; }

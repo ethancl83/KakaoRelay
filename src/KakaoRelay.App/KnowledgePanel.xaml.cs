@@ -22,6 +22,7 @@ public partial class KnowledgePanel : UserControl, INotifyPropertyChanged
     public IEnumerable<PersonaProfile> Profiles => settings?.Invoke().Personas ?? [];
     public ObservableCollection<KnowledgeNote> Notes { get; } = [];
     public bool Busy => operation is not null;
+    public bool AutomationBusy => Automation.Busy;
     public bool Idle => settings is not null && !Busy && !stopping;
     public bool HasSelectedNote => selectedNote is not null;
     public string VaultPath { get; set; } = "";
@@ -76,8 +77,9 @@ public partial class KnowledgePanel : UserControl, INotifyPropertyChanged
     }
     public void Initialize(Func<AiSettings> getSettings, Func<bool> saveSettings)
     { settings = getSettings; save = saveSettings; Profile = Profiles.FirstOrDefault(); Changed(); }
+    public void InitializeAutomation(AiService ai) => Automation.Initialize(ai, settings!, save!, () => profile?.Knowledge.VaultPath ?? "");
     private void Changed() => PropertyChanged?.Invoke(this, new(string.Empty));
-    public void Stop() { stopping = true; operation?.Cancel(); Changed(); }
+    public void Stop() { stopping = true; operation?.Cancel(); Automation.Stop(); Changed(); }
     private void Cancel_Click(object sender, RoutedEventArgs e) => operation?.Cancel();
     private async Task Work(Func<CancellationToken, Task> action)
     {

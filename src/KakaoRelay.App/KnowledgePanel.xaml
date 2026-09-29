@@ -1,4 +1,4 @@
-<UserControl x:Class="KakaoRelay.App.KnowledgePanel" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+<UserControl x:Class="KakaoRelay.App.KnowledgePanel" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:KakaoRelay.App">
   <UserControl.Resources>
     <Style TargetType="TextBox"><Setter Property="Padding" Value="8" /><Setter Property="Margin" Value="0,5,0,8" /></Style>
     <Style TargetType="TabItem"><Setter Property="Padding" Value="14,7" /></Style>
@@ -46,6 +46,7 @@
           <TextBox Grid.Row="5" Text="{Binding Preview, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Margin="0" FontSize="12" Background="#FAFCFC" AutomationProperties.Name="지식 내용 미리보기" />
         </Grid>
       </TabItem>
+      <TabItem Header="대화 자동 정리"><local:AutoKnowledgePanel x:Name="Automation" /></TabItem>
       <TabItem Header="연결 설정">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
           <StackPanel Margin="14">

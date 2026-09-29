@@ -1146,6 +1146,27 @@
               ],
               "type": "string"
             }
+          },
+          "autoKnowledge": {
+            "type": "object",
+            "description": "Windows 앱의 대화 자동 정리. 앱 실행 중에만 동작합니다.",
+            "properties": {
+              "enabled": { "type": "boolean", "default": false },
+              "intervalMinutes": { "type": "integer", "default": 30, "minimum": 5, "maximum": 1440 },
+              "autoSave": { "type": "boolean", "default": true, "description": "false이면 모든 요약을 검토필요 폴더에 저장합니다." },
+              "rooms": {
+                "type": "array", "maxItems": 20,
+                "items": {
+                  "type": "object", "required": ["profile", "roomId", "title", "generation"],
+                  "properties": {
+                    "profile": { "type": "string", "maxLength": 200 },
+                    "roomId": { "type": "string", "maxLength": 200 },
+                    "title": { "type": "string", "maxLength": 500 },
+                    "generation": { "type": "string", "format": "uuid", "description": "같은 구독에서는 유지하고 시작 기준을 갱신할 때만 새 UUID로 바꿉니다." }
+                  }
+                }
+              }
+            }
           }
         }
       },
