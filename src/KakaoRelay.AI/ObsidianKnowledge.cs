@@ -34,7 +34,12 @@ public static class ObsidianKnowledge
     }
 
     public static Task<KnowledgeSearch> SearchAsync(KnowledgeSettings settings, string query, CancellationToken cancellation = default)
-        => Task.Run(() => Search(settings, query, cancellation), cancellation);
+    {
+        settings.Validate();
+        cancellation.ThrowIfCancellationRequested();
+        return settings.Enabled ? Task.Run(() => Search(settings, query, cancellation), cancellation)
+            : Task.FromResult(new KnowledgeSearch([], 0, 0, false));
+    }
 
     private static KnowledgeSearch Search(KnowledgeSettings settings, string query, CancellationToken cancellation)
     {
@@ -127,15 +132,22 @@ public static class ObsidianKnowledge
         var heading = title.Replace('\r', ' ').Replace('\n', ' ');
         var metadata = room is null ? "사용자 작성 노트" : $"대화 분석 결과 · 방: {room.Title.Replace('\r', ' ').Replace('\n', ' ')}";
         var text = $"# {heading}\n\n> {metadata}\n> 저장: {DateTimeOffset.Now:O}\n\n{body.Trim()}\n";
+        if (Encoding.UTF8.GetByteCount(text) > MaxFileBytes) throw new ArgumentException("노트가 256KB를 넘습니다. 요약을 나누어 저장하세요.");
         cancellation.ThrowIfCancellationRequested();
-        using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, true);
-        using var writer = new StreamWriter(stream, new UTF8Encoding(false));
-        // Once created, complete the small note atomically from the user's perspective of cancellation.
-        await writer.WriteAsync(text);
-        return path;
+        var temporary = path + ".tmp";
+        try
+        {
+            await using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, true))
+            await using (var writer = new StreamWriter(stream, new UTF8Encoding(false)))
+                await writer.WriteAsync(text.AsMemory(), cancellation);
+            cancellation.ThrowIfCancellationRequested();
+            File.Move(temporary, path);
+            return path;
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 
-    private static void CheckDirectory(string root)
+    internal static void CheckDirectory(string root)
     {
         if (!Directory.Exists(root)) throw new DirectoryNotFoundException("지식베이스 보관함을 찾을 수 없습니다. 폴더 경로를 확인하세요.");
         for (var directory = new DirectoryInfo(root); directory is not null; directory = directory.Parent)

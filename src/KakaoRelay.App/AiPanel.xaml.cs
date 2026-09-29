@@ -15,8 +15,6 @@ public partial class AiPanel : UserControl, INotifyPropertyChanged
     private string answer = "";
     private LocalRoom? summaryRoom;
     private string? summaryPersonaId;
-    public string KnowledgeQuery { get; set; } = "";
-    public string KnowledgePreview { get; private set; } = "검색은 로컬에서만 실행하며 AI에 전송하지 않습니다.";
     public bool CanSaveKnowledgeNote => Idle && summaryRoom is not null && summaryPersonaId is not null && !string.IsNullOrWhiteSpace(Answer);
     private bool settingsLoaded, restoringRooms;
     private readonly System.Windows.Threading.DispatcherTimer saveTimer = new() { Interval = TimeSpan.FromMilliseconds(700) };
@@ -38,7 +36,7 @@ public partial class AiPanel : UserControl, INotifyPropertyChanged
     public event Action<LocalRoom, string>? ComposeRequested;
     public AiSettings Settings { get; private set; } = new();
     private PersonaProfile? editingProfile;
-    public PersonaProfile? EditingProfile { get => editingProfile; set { if (value is null || PersonaImages.Busy) return; editingProfile = value; KnowledgePreview = "검색은 로컬에서만 실행하며 AI에 전송하지 않습니다."; PersonaImages.SwitchPersona(); Changed(); } }
+    public PersonaProfile? EditingProfile { get => editingProfile; set { if (value is null || PersonaImages.Busy) return; editingProfile = value; PersonaImages.SwitchPersona(); Changed(); } }
     public PersonaProfile? RoomProfile { get; set; }
     public string RoomReplyMode { get; set; } = "trigger";
     private readonly List<LocalRoom> botSelectionOrder = [];
@@ -104,6 +102,7 @@ public partial class AiPanel : UserControl, INotifyPropertyChanged
         Detect(); Changed();
     }
     private void Changed() => PropertyChanged?.Invoke(this, new(string.Empty));
+    internal bool SaveSettings() { var saved = Save(); Changed(); return saved; }
     private bool Save()
     {
         if (!settingsLoaded) return false;
@@ -111,37 +110,6 @@ public partial class AiPanel : UserControl, INotifyPropertyChanged
         catch (Exception e) { Status = e.Message; Changed(); return false; }
     }
     private void Save_Click(object sender, RoutedEventArgs e) { if (Idle && Save()) { Status = "페르소나·프로바이더·지식베이스 설정을 저장했습니다."; Changed(); } }
-    private void KnowledgeFolder_Click(object sender, RoutedEventArgs e)
-    {
-        if (!Idle || EditingProfile is null) return;
-        var dialog = new Microsoft.Win32.OpenFolderDialog { Title = "봇이 참고할 옵시디언 보관함 또는 하위 폴더 선택" };
-        if (dialog.ShowDialog() != true) return;
-        EditingProfile.Knowledge.VaultPath = dialog.FolderName;
-        Save(); Changed();
-    }
-    private void KnowledgeOpen_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            var path = EditingProfile?.Knowledge.VaultPath;
-            if (string.IsNullOrWhiteSpace(path) || !System.IO.Directory.Exists(path)) throw new InvalidOperationException("먼저 보관함 폴더를 선택하세요.");
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(System.IO.Path.GetFullPath(path)) { UseShellExecute = true });
-        }
-        catch (Exception error) { Status = error.Message; Changed(); }
-    }
-    private async void KnowledgeSearch_Click(object sender, RoutedEventArgs e)
-    {
-        if (!Idle || EditingProfile is null || !Save()) return;
-        var settings = new KnowledgeSettings { Enabled = true, VaultPath = EditingProfile.Knowledge.VaultPath };
-        var query = KnowledgeQuery;
-        await Work(async ct =>
-        {
-            var result = await ObsidianKnowledge.SearchAsync(settings, query, ct);
-            KnowledgePreview = result.Excerpts.Count == 0 ? "관련 노트를 찾지 못했습니다. 노트에 있는 주제어나 제목으로 검색하세요."
-                : string.Join("\n\n", result.Excerpts.Select(x => $"[노트: {x.Source}] · 발췌 {x.Part}\n{x.Text}"));
-            Status = $"노트 {result.Notes}개 · 관련 발췌 {result.Excerpts.Count}개 · 건너뜀 {result.Skipped}개{(result.Limited ? " · 검색 한도 도달: 더 작은 폴더를 선택하세요." : "")}";
-        });
-    }
     private async void SaveKnowledgeNote_Click(object sender, RoutedEventArgs e)
     {
         if (!CanSaveKnowledgeNote || !Save()) return;

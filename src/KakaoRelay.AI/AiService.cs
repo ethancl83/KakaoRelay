@@ -67,8 +67,8 @@ public sealed class AiService(IChatReader reader, AiSettingsStore store, IAiRunn
                     {
                         // A changed/removed note or disconnected vault must not survive in resumed context.
                         var revision = AiConversation.Hash(PromptJson.Serialize(new { profile.Knowledge, knowledge.Excerpts }));
-                        var folder = AiConversation.Folder(provider, persona, command, revision);
-                        var conversation = AiConversation.Load(folder);
+                        var folder = AiConversation.Folder(provider, persona, command);
+                        var conversation = AiConversation.Load(folder, revision);
                         var resumed = conversation.SessionId is not null;
                         var delta = resumed ? context with { Messages = context.Messages.Where(m => !conversation.Seen.Contains(AiConversation.Fingerprint(m))).ToList() } : context;
                         // An interrupted turn must not be silently reused on the next request.
@@ -78,6 +78,7 @@ public sealed class AiService(IChatReader reader, AiSettingsStore store, IAiRunn
                         text = reply.Text;
                         if (string.IsNullOrWhiteSpace(text)) throw new InvalidOperationException("빈 응답");
                         conversation.SessionId = reply.SessionId;
+                        conversation.KnowledgeRevision = revision;
                         conversation.Seen = context.Messages.Select(AiConversation.Fingerprint).ToHashSet();
                         conversation.Save(folder);
                     }

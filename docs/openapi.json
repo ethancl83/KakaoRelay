@@ -1247,6 +1247,11 @@
             "type": ["string", "null"],
             "description": "이미지 생성 실패 진단. 실패 시 imagePath는 null이며 text는 실패 안내입니다."
           },
+          "knowledgeSources": {
+            "type": "array",
+            "description": "현재 답변 생성에 전달한 옵시디언 노트 발췌. 모델이 실제 인용한 출처와는 다를 수 있습니다.",
+            "items": { "$ref": "#/components/schemas/KnowledgeExcerpt" }
+          },
           "attachment": {
             "anyOf": [
               {
@@ -1369,7 +1374,25 @@
           },
           "attachImages": {
             "type": "boolean"
+          },
+          "knowledge": {
+            "$ref": "#/components/schemas/KnowledgeSettings"
           }
+        }
+      },
+      "KnowledgeSettings": {
+        "type": "object",
+        "properties": {
+          "enabled": { "type": "boolean", "default": false },
+          "vaultPath": { "type": "string", "maxLength": 4096, "description": "서버 컴퓨터의 옵시디언 보관함 또는 공유할 하위 폴더의 절대 경로. 활성화 시 필수." }
+        }
+      },
+      "KnowledgeExcerpt": {
+        "type": "object",
+        "properties": {
+          "source": { "type": "string", "description": "보관함 기준 노트 상대 경로" },
+          "part": { "type": "integer", "minimum": 1 },
+          "text": { "type": "string", "maxLength": 2000 }
         }
       }
     }

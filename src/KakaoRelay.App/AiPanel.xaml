@@ -134,25 +134,6 @@
             <TabItem Header="이미지">
               <local:PersonaImagesPanel x:Name="PersonaImages" />
             </TabItem>
-            <TabItem Header="지식베이스">
-              <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <StackPanel Margin="12" IsEnabled="{Binding Idle}">
-                  <TextBlock Text="옵시디언 보관함" FontWeight="SemiBold" />
-                  <TextBlock Text="이 페르소나를 사용하는 방에서 관련 노트를 참고합니다. 공유할 노트만 담은 보관함 또는 하위 폴더를 선택하세요." FontSize="11" Margin="0,6" />
-                  <TextBox Text="{Binding EditingProfile.Knowledge.VaultPath, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="옵시디언 보관함 경로" />
-                  <WrapPanel>
-                    <Button Content="폴더 선택" Click="KnowledgeFolder_Click" Padding="10,6" Margin="0,0,6,0" />
-                    <Button Content="폴더 열기" Click="KnowledgeOpen_Click" Padding="10,6" />
-                  </WrapPanel>
-                  <CheckBox Content="답변에 지식 노트 사용" IsChecked="{Binding EditingProfile.Knowledge.Enabled}" Margin="0,12" />
-                  <TextBlock Text="관련 노트의 발췌는 AI 서비스에 전달됩니다. 노트 수정·삭제는 다음 요청부터 반영됩니다. 대화분석 결과는 검토 후 ‘요약을 노트로 저장’으로 쌓을 수 있습니다." FontSize="11" Foreground="{StaticResource Muted}" />
-                  <TextBlock Text="검색 미리보기" Margin="0,16,0,0" FontWeight="SemiBold" />
-                  <TextBox Text="{Binding KnowledgeQuery, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="지식 검색어" />
-                  <Button Content="관련 노트 확인" Click="KnowledgeSearch_Click" HorizontalAlignment="Left" Padding="10,6" />
-                  <TextBox Text="{Binding KnowledgePreview, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Height="150" AutomationProperties.Name="지식 검색 결과" />
-                </StackPanel>
-              </ScrollViewer>
-            </TabItem>
           </TabControl>
         </Grid>
       </TabItem>

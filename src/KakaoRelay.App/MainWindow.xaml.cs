@@ -23,10 +23,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
     public ObservableCollection<ConversationTarget> Conversations { get; } = [];
     public ObservableCollection<TestSendReceipt> History { get; } = [];
-    public bool Working => working || queuedSends > 0 || ChatbotPanel.Busy || ChatbotPanel.BotsRunning || ChatbotPanel.ImagesBusy;
+    public bool Working => working || queuedSends > 0 || ChatbotPanel.Busy || ChatbotPanel.BotsRunning || ChatbotPanel.ImagesBusy || KnowledgePanel.Busy;
     public bool NotWorking => CanEdit;
     public bool CanEdit => !working && queuedSends == 0 && !shuttingDown;
-    public void PrepareShutdown() { shuttingDown = true; ChatbotPanel.Stop(); ApiStatus = "작업 완료 후 종료 중"; RefreshAll(); }
+    public void PrepareShutdown() { shuttingDown = true; ChatbotPanel.Stop(); KnowledgePanel.Stop(); ApiStatus = "작업 완료 후 종료 중"; RefreshAll(); }
     public bool ShowSendResult => compose.Submitted || currentReceipt is not null;
     public bool ShowObserveCurrent => currentReceipt is { Status: "needs-review", EnterPosted: true };
     public bool CanSend => CanEdit && targetReady && selectedConversation?.Selectable == true && !string.IsNullOrWhiteSpace(messageBody);
@@ -92,7 +92,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         Width = MinWidth;
         Height = MinHeight;
     }
-    public void InitializeAi(AiService ai, Func<ApiSendCommand, CancellationToken, Task<TestSendReceipt>> send) => ChatbotPanel.Initialize(ai, send);
+    public void InitializeAi(AiService ai, Func<ApiSendCommand, CancellationToken, Task<TestSendReceipt>> send)
+    {
+        ChatbotPanel.Initialize(ai, send);
+        KnowledgePanel.Initialize(() => ChatbotPanel.Settings, ChatbotPanel.SaveSettings);
+    }
     private void Refresh([CallerMemberName] string? property = null) => PropertyChanged?.Invoke(this, new(property));
     private void RefreshAll() => Refresh(string.Empty);
     private void SetWorking(bool value)
