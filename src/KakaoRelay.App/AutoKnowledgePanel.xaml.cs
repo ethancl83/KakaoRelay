@@ -48,6 +48,7 @@ public partial class AutoKnowledgePanel : UserControl, INotifyPropertyChanged
         foreach (var room in config.Rooms) AddChoice(new(room.Profile, room.RoomId, room.Title, true), true);
         ai.AutomaticKnowledge.StatusChanged += message => Dispatcher.Invoke(() => Log(message));
         Status = Enabled ? "자동 정리 사용 중 · 저장된 처리 위치에서 재개합니다." : "자동 정리가 꺼져 있습니다. 방을 선택하고 설정을 적용하세요.";
+        foreach (var report in ai.AutomaticKnowledge.SavedStatuses(settings())) Log(report);
         timer.Start(); Changed(); _ = Run(false);
     }
     private void Changed() => PropertyChanged?.Invoke(this, new(string.Empty));

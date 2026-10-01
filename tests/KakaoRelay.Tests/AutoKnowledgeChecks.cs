@@ -79,7 +79,49 @@ internal static class AutoKnowledgeChecks
         reader.Messages = Enumerable.Range(20, 500).Select(i => Message(i, "many")).ToList();
         await service.TickAsync(settings, true);
         check(status.Contains("500") && runner.Calls == before, "A gap beyond the reader window is reported without silently skipping messages");
+        await CheckCatchupAndComparison(area, check);
         await CheckRecovery(area, vault, check);
+    }
+    private static async Task CheckCatchupAndComparison(string area, Action<bool, string> check)
+    {
+        var vault = Path.Combine(area, "comparison-vault"); Directory.CreateDirectory(vault);
+        var stateRoot = Path.Combine(area, "comparison-state");
+        var settings = new AiSettings { SelfId = "self" }; settings.EnsurePersonas();
+        settings.Personas[0].Knowledge = new() { VaultPath = vault, Enabled = false };
+        settings.AutoKnowledge = new() { Enabled = true, Rooms = [new("account", "room", "연속 처리", Guid.NewGuid())] };
+        foreach (var provider in settings.Providers) provider.Enabled = provider.Id == AiSettings.Order[0];
+        var reader = new Reader(); var runner = new Runner();
+        var service = new AutoKnowledgeService(reader, runner, stateRoot);
+        string status = ""; service.StatusChanged += s => status = s;
+        reader.Messages.Add(Message(1, "기준")); await service.TickAsync(settings, true);
+        reader.Messages.AddRange(Enumerable.Range(2, 235).Select(i => Message(i, "잡담 " + i)));
+        runner.Reply = () => runner.Calls == 2 ? throw new IOException("중간 실패") : Digest();
+        await service.TickAsync(settings, true);
+        var path = Directory.GetFiles(stateRoot, "*.json").Single();
+        string Cursor() => JsonDocument.Parse(File.ReadAllText(path)).RootElement.GetProperty("cursor").GetString()!;
+        check(Cursor() == "101" && status.Contains("실패"), "A later batch failure preserves the successful batch cursor without skipping the failed range");
+        runner.Reply = () => Digest(); var calls = runner.Calls;
+        await new AutoKnowledgeService(reader, runner, stateRoot).TickAsync(settings, true);
+        check(Cursor() == "236" && runner.Calls == calls + 2, "Restart drains every remaining batch to the latest message in one cycle, even when no knowledge is found");
+        check(service.SavedStatuses(settings).Single().Contains("135개 확인"), "The last classification result remains visible after restart");
+        await File.WriteAllTextAsync(Path.Combine(vault, "휴가규칙.md"), "# 휴가 신청\n휴가는 사흘 전에 신청합니다.");
+        reader.Messages.Add(Message(237, "휴가 신청은 3일 전에 해주세요."));
+        runner.Reply = () => Digest(Claim("휴가 신청", "휴가 신청 기한은 3일 전입니다.", 237, "휴가 신청은 3일 전에 해주세요.")
+            with { Relation = "duplicate", RelatedSource = "휴가규칙.md", RelatedQuote = "휴가는 사흘 전에 신청합니다." });
+        await service.TickAsync(settings, true);
+        check(status.Contains("중복 1건") && !Directory.Exists(Path.Combine(vault, "자동정리")) && runner.Prompt.Contains("휴가는 사흘 전에 신청합니다."),
+            "Semantic duplicate classification compares actual vault notes even when bot retrieval is disabled");
+        reader.Messages.Add(Message(238, "휴가 신청 기한을 닷새 전으로 바꿉니다."));
+        runner.Reply = () => Digest(Claim("변경된 휴가 기한", "휴가는 닷새 전에 신청합니다.", 238, "휴가 신청 기한을 닷새 전으로 바꿉니다.")
+            with { Relation = "conflict", RelatedSource = "휴가규칙.md", RelatedQuote = "휴가는 사흘 전에 신청합니다." });
+        await service.TickAsync(settings, true);
+        check(!Directory.Exists(Path.Combine(vault, "자동정리")) && File.ReadAllText(Directory.GetFiles(Path.Combine(vault, "검토필요"), "*.md").Single()).Contains("휴가규칙.md"),
+            "Semantic conflict goes to review with the existing source even when the model changes the topic name");
+        reader.Messages.Add(Message(239, "휴가는 하루 전에 신청합니다."));
+        runner.Reply = () => Digest(Claim("휴가", "하루 전 신청", 239, "휴가는 하루 전에 신청합니다.")
+            with { Relation = "duplicate", RelatedSource = "없는노트.md", RelatedQuote = "거짓 근거" });
+        await service.TickAsync(settings, true);
+        check(Cursor() == "238" && status.Contains("실패"), "Unsupported duplicate classification cannot silently discard new messages");
     }
     private static async Task CheckRecovery(string area, string vault, Action<bool, string> check)
     {

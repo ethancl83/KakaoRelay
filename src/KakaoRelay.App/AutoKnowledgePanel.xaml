@@ -4,7 +4,7 @@
     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="120" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
     <StackPanel>
       <TextBlock Text="대화를 지식 노트로 자동 정리" FontWeight="SemiBold" />
-      <TextBlock Text="선택한 방의 새 대화에서 지식·결정·할 일을 추출합니다. 시작 기준 이후만 처리하며, 앱이 켜져 있으면 자동답장과 별도로 실행됩니다." FontSize="11" Foreground="{StaticResource Muted}" Margin="0,8" />
+      <TextBlock Text="매 주기마다 마지막 처리 위치부터 최근 대화까지 확인합니다. 잡담은 생략하고 기존 노트와 중복·충돌을 비교해 지식·결정·할 일을 저장합니다. 앱이 켜져 있어야 합니다." TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource Muted}" Margin="0,8" />
       <CheckBox Content="대화 자동 정리 사용" IsChecked="{Binding Enabled}" Margin="0,4,0,10" />
     </StackPanel>
     <DockPanel Grid.Row="1" Margin="0,0,0,8">
